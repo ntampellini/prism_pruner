@@ -1,0 +1,90 @@
+[project]
+name = "prism_pruner"
+description = "Prism Pruner"
+license = {file = "LICENSE"}
+version = "0.0.1"
+readme = "README.md"
+keywords = []
+authors = [{name = "Nicolò Tampellini"}]
+requires-python = ">=3.14"
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+numpy = "*"
+
+[tool.pixi.pypi-dependencies]
+prism_pruner = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default"}
+
+[tool.pixi.feature.dev.tasks]
+fmt = { cmd="ruff format ." }
+lint = { cmd="ruff check . --fix" }
+types = { cmd="mypy" }
+test = { cmd="pytest" }
+all = { depends-on = ["fmt", "lint", "types", "test"] }
+
+[tool.pixi.feature.dev.dependencies]
+pytest = ">=8.3"
+pytest-cov = ">=6.0"
+ruff = ">=0.11"
+mypy = ">=1.15"
+pre-commit = ">=4.2"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "B",  # bugbear
+    "D",  # pydocstyle
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+    "N",  # pep8-naming conventions
+    "W",  # pycodestyle warnings
+    "C4", # comprehensions
+    "PL", # pylint
+    "PT", # flake8-pytest-style
+    "PIE", # misc lints
+    "PYI", # flake8-pyi
+    "TID", # tidy imports
+    "TCH", # type-checking imports
+    "RUF", # Ruff-specific rules
+    "RSE", # flake8-raise
+    "ICN001", # unconventional-import-alias
+]
+ignore = [
+    "N806", # Non-lowercase variable in function
+    "PLR0911", # Too many returns
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments to function call
+    "PLR0914", # Too many locals
+    "PLR0915", # Too many statements
+    "PLR1702", # Too many nested-blocks
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.mypy]
+files = ["prism_pruner", "tests"]
+strict = true
+pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "prism_pruner"]
+addopts = "--doctest-modules"
+doctest_optionflags = "NORMALIZE_WHITESPACE"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]

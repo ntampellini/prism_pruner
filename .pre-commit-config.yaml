@@ -1,0 +1,43 @@
+exclude: '.pixi/'
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0  # this is optional, use `pre-commit autoupdate` to get the latest rev!
+  hooks:
+    - id: check-yaml
+    - id: check-toml
+    - id: end-of-file-fixer
+    - id: trailing-whitespace
+
+- repo: local
+  hooks:
+  - id: ruff
+    name: ruff-format
+    stages: [pre-commit, pre-push]
+    language: system
+    entry: pixi run fmt
+    types: [python]
+    pass_filenames: false
+
+  - id: ruff
+    name: ruff-check
+    stages: [pre-commit, pre-push]
+    language: system
+    entry: pixi run lint
+    types: [python]
+    pass_filenames: false
+
+  - id: Mypy
+    name: mypy
+    stages: [pre-commit, pre-push]
+    language: system
+    entry: pixi run types
+    types: [python]
+    pass_filenames: false
+
+  - id: pytest
+    name: pytest
+    stages: [pre-commit, pre-push]
+    language: system
+    entry: pixi run test
+    types: [python]
+    pass_filenames: false
