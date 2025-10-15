@@ -2,18 +2,23 @@
 name = "prism_pruner"
 description = "Prism Pruner"
 license = {file = "LICENSE"}
-version = "0.0.1"
+version = "1.0.0"
 readme = "README.md"
 keywords = []
-authors = [{name = "Nicolò Tampellini"}]
-requires-python = ">=3.14"
+authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]
+requires-python = ">=3.11"
 
 [tool.pixi.project]
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
-numpy = "*"
+numpy = "1.24.*"
+numba = "0.58.1.*"
+networkx = "2.5.1.*"
+cclib = ">=1.7"
+periodictable = "*"
+openbabel = "3.1.1.*"
 
 [tool.pixi.pypi-dependencies]
 prism_pruner = { path = ".", editable = true }
@@ -67,6 +72,8 @@ ignore = [
     "PLR0914", # Too many locals
     "PLR0915", # Too many statements
     "PLR1702", # Too many nested-blocks
+
+    "PLR2004", # allow-magic-value-types
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -79,6 +86,22 @@ convention = "numpy"
 files = ["prism_pruner", "tests"]
 strict = true
 pretty = true
+
+[[tool.mypy.overrides]]
+module = "numba.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "networkx.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "periodictable.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "cclib.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "prism_pruner"]
