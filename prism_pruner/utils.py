@@ -1,10 +1,10 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
 import time
+from pathlib import Path
 from typing import Any, Callable, TextIO
 
 import numpy as np
-from cclib.io.ccio import ccread
 from numpy.linalg import LinAlgError
 from numpy.typing import ArrayLike
 
@@ -64,10 +64,85 @@ def write_xyz(
     output.write(string)
 
 
-def read_xyz(filename: str) -> Any:
-    """Ccread wrapper. Raises an error if unsuccessful."""
-    mol = ccread(filename)
-    assert mol is not None, f"Reading molecule {filename} failed - check its integrity."
+class XYZParser:
+    """cclib-like parser for .xyz multimolecular files."""
+
+    def __init__(self, filename: str, pt: Any):
+        """Initialize XYZParser and parse the file.
+
+        Args:
+            filename (str): Path to the .xyz file
+            pt: periodictable table instance for atomic number lookup
+
+        Raises
+        ------
+            FileNotFoundError: If the specified file does not exist
+        """
+        self.filename = filename
+        self.pt = pt
+        self.atomcoords_list: list[Array3D_float] = []
+        self.atomnos_list: list[Array1D_int] = []
+
+        self._parse_file()
+
+        self.atomcoords: Array3D_float = np.asarray(self.atomcoords_list)
+
+        self.atomnos: Array1D_int = np.asarray(self.atomnos_list[0])
+
+    def _parse_file(self) -> None:
+        """Parse the .xyz file and populate atomcoords and atomnos."""
+        filepath = Path(self.filename)
+
+        if not filepath.exists():
+            raise FileNotFoundError(f"File '{self.filename}' not found")
+
+        with open(filepath, "r") as f:
+            lines = f.readlines()
+
+        i = 0
+        while i < len(lines):
+            # Skip empty lines
+            if not lines[i].strip():
+                i += 1
+                continue
+
+            # Read number of atoms
+            try:
+                natoms = int(lines[i].strip())
+            except ValueError:
+                i += 1
+                continue
+
+            # Skip comment line
+            i += 2
+
+            coords = []
+            atomnos = []
+
+            # Read atom data
+            for j in range(natoms):
+                if i + j < len(lines):
+                    parts = lines[i + j].split()
+                    if len(parts) >= 4:
+                        symbol = parts[0]
+                        x, y, z = map(float, parts[1:4])
+
+                        # Get atomic number from periodictable
+                        atomic_no = getattr(self.pt, symbol).number
+
+                        coords.append([x, y, z])
+                        atomnos.append(atomic_no)
+
+            if coords:
+                self.atomcoords_list.append(np.array(coords))
+                self.atomnos_list.append(np.array(atomnos))
+
+            i += natoms
+
+
+def read_xyz(filename: str) -> XYZParser:
+    """Read a .xyz file and return a cclib-like mol object."""
+    mol = XYZParser(filename, pt)
     return mol
 
 

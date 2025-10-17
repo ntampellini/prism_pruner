@@ -16,12 +16,12 @@ platforms = ["linux-64", "osx-arm64"]
 numpy = "1.24.*"
 numba = "0.58.1.*"
 networkx = "2.5.1.*"
-cclib = ">=1.7"
 periodictable = "*"
-openbabel = "3.1.1.*"
+ipykernel = ">=7.0.1,<8"
 
 [tool.pixi.pypi-dependencies]
 prism_pruner = { path = ".", editable = true }
+cclib = ">=1.8.1,<2"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
