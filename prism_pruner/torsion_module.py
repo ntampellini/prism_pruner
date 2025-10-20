@@ -17,12 +17,10 @@ from networkx import (
 
 from prism_pruner.algebra import norm, norm_of, vec_angle
 from prism_pruner.graph_manipulations import (
-    _get_phenyl_ids,
+    get_phenyl_ids,
     get_sp_n,
     is_amide_n,
     is_ester_o,
-    is_sp_n,
-    neighbors,
 )
 from prism_pruner.rmsd import rmsd_and_max_numba
 from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2D_int, F
@@ -136,8 +134,8 @@ def _is_free(index: int, graph: Graph) -> bool:
     if all(
         (
             graph.nodes[index]["atomnos"] == 6,
-            is_sp_n(index, graph, 2),
-            8 in (graph.nodes[n]["atomnos"] for n in neighbors(graph, index)),
+            2 == get_sp_n(index, graph),
+            8 in (graph.nodes[n]["atomnos"] for n in graph.neighbors(index)),
         )
     ):
         return False
@@ -167,11 +165,11 @@ def _is_nondummy(i: int, root: int, graph: Graph) -> bool:
     # and flat symmetrical rings like phenyl, N-pyrrolyl...
 
     G = deepcopy(graph)
-    nb = neighbors(G, i)
+    nb = list(G.neighbors(i))
     nb.remove(root)
 
     if len(nb) == 1:
-        if len(neighbors(G, nb[0])) == 2:
+        if len(list(G.neighbors(nb[0]))) == 2:
             return False
     # if node i has two bonds only (one with root and one with a)
     # and the other atom (a) has two bonds only (one with i)
@@ -181,7 +179,7 @@ def _is_nondummy(i: int, root: int, graph: Graph) -> bool:
     # check if it is a phenyl-like rotation
     if len(nb) == 2:
         # get the 6 indices of the aromatic atoms (i1-i6)
-        phenyl_indices = _get_phenyl_ids(i, G)
+        phenyl_indices = get_phenyl_ids(i, G)
 
         # compare the two halves of the 6-membered ring (indices i2-i3 region with i5-i6 region)
         if phenyl_indices is not None:
@@ -279,7 +277,7 @@ def _get_hydrogen_bonds(
             # keep close pairs
             if d_min < norm_of(coords[i1] - coords[i2]) < d_max:
                 # getting the indices of all H atoms attached to them
-                Hs = [i for i in (neighbors(graph, i1)) if graph.nodes[i]["atomnos"] == 1]
+                Hs = [i for i in graph.neighbors(i1) if graph.nodes[i]["atomnos"] == 1]
 
                 # versor connectring the two Heteroatoms
                 versor = norm(coords[i2] - coords[i1])
