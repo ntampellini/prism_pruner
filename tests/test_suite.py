@@ -50,3 +50,49 @@ def test_two_different() -> None:
 
     pruned, _ = prune_by_moment_of_inertia(coords, mol1.atomnos)
     assert len(pruned) == 2
+
+
+def test_ensemble_moi() -> None:
+    """Assert that an ensemble of structures is reduced in size after MOI pruning."""
+    os.chdir(test_dir)
+
+    ensemble = read_xyz("ensemble_100.xyz")
+
+    pruned, _ = prune_by_moment_of_inertia(
+        ensemble.atomcoords,
+        ensemble.atomnos,
+    )
+
+    assert pruned.shape[0] < ensemble.atomcoords.shape[0]
+
+
+def test_ensemble_rmsd() -> None:
+    """Assert that an ensemble of structures is reduced in size after RMSD pruning."""
+    os.chdir(test_dir)
+
+    ensemble = read_xyz("ensemble_100.xyz")
+
+    pruned, _ = prune_by_rmsd(
+        ensemble.atomcoords,
+        ensemble.atomnos,
+        max_rmsd=1.0,
+    )
+
+    assert pruned.shape[0] < ensemble.atomcoords.shape[0]
+
+
+def test_ensemble_rmsd_rot_corr() -> None:
+    """Assert that an ensemble of structures is reduced in size after rot. corr. RMSD pruning."""
+    os.chdir(test_dir)
+
+    ensemble = read_xyz("ensemble_100.xyz")
+    graph = graphize(ensemble.atomcoords[0], ensemble.atomnos)
+
+    pruned, _ = prune_by_rmsd_rot_corr(
+        ensemble.atomcoords,
+        ensemble.atomnos,
+        graph,
+        max_rmsd=1.0,
+    )
+
+    assert pruned.shape[0] < ensemble.atomcoords.shape[0]

@@ -1755,7 +1755,7 @@ packages:
 - pypi: ./
   name: prism-pruner
   version: 1.0.0
-  sha256: daafdf44dfbcb1ae2ecb00859eeb6d92556f705f43e1bf85c8c38bddac18daed
+  sha256: af70958e52a6ddd0f0ee61677b16bc3e7061bc0bae7e56242e8a58b623e9d732
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.52-pyha770c72_0.conda
