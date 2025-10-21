@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, Callable, Sequence, TextIO
 
 import numpy as np
 from numpy.linalg import LinAlgError
@@ -27,7 +27,7 @@ def align_structures(
     if isinstance(indices, (list, tuple)):
         indices = np.array(indices)
 
-    indices = indices or np.array([i for i, _ in enumerate(structures[0])])
+    indices = indices if indices is not None else np.array([i for i, _ in enumerate(structures[0])])
 
     reference -= np.mean(reference[indices], axis=0)
     for t, _ in enumerate(targets):
@@ -284,3 +284,19 @@ def timing_wrapper(
         return func_return, elapsed
 
     return func_return, payload, elapsed
+
+
+def flatten(array: Sequence[Any], typefunc: type = float) -> list[Any]:
+    """Return the unraveled sequence, with items coerced into the typefunc type."""
+    out = []
+
+    def rec(_l: Any) -> None:
+        """Recursive unraveling function."""
+        for e in _l:
+            if type(e) in [list, tuple, np.ndarray]:
+                rec(e)
+            else:
+                out.append(typefunc(e))
+
+    rec(array)
+    return out

@@ -24,7 +24,7 @@ from prism_pruner.typing import (
     F,
     FloatIterable,
 )
-from prism_pruner.utils import get_double_bonds_indices
+from prism_pruner.utils import flatten, get_double_bonds_indices
 
 __version__ = "1.0.0"
 
@@ -433,10 +433,13 @@ def prune_by_rmsd_rot_corr(
     for hb in hydrogen_bonds:
         graph.add_edge(*hb)
 
+    # keep an unraveled set of atoms in hbs
+    flat_hbs = set(flatten(hydrogen_bonds))
+
     # get all rotable bonds in the molecule, including dummy rotations
     torsions = _get_torsions(
         graph,
-        hydrogen_bonds=_get_hydrogen_bonds(ref, atomnos, graph),
+        hydrogen_bonds=hydrogen_bonds,
         double_bonds=get_double_bonds_indices(ref, atomnos),
         keepdummy=True,
         mode="symmetry",
@@ -450,8 +453,14 @@ def prune_by_rmsd_rot_corr(
     ]
 
     # since we only compute RMSD based on heavy atoms, discard
-    # quadruplets that involve hydrogen atoms
-    torsions = [t for t in torsions if 1 not in [atomnos[i] for i in t.torsion]]
+    # quadruplets that involve hydrogen atom as termini, unless
+    # they are involved in hydrogen bonding
+    torsions = [
+        t
+        for t in torsions
+        if (1 not in [atomnos[i] for i in t.torsion])
+        or (t.torsion[0] in flat_hbs or t.torsion[3] in flat_hbs)
+    ]
 
     # get torsions angles
     angles = [get_angles(t, graph) for t in torsions]

@@ -96,3 +96,26 @@ def test_ensemble_rmsd_rot_corr() -> None:
     )
 
     assert pruned.shape[0] < ensemble.atomcoords.shape[0]
+
+
+def test_rmsd_rot_corr_segmented_graph_2_mols() -> None:
+    """Assert that an ensemble of structures is reduced in size after rot. corr. RMSD pruning.
+
+    The provided ensemble has four different rotamers and two
+    connected components in its graph (i.e. two separate molecules).
+    The expected behavior is that this fact should not stump the
+    rotamer-invariant function.
+    """
+    os.chdir(test_dir)
+
+    ensemble = read_xyz("MTBE_tBuOH_ens.xyz")
+    graph = graphize(ensemble.atomcoords[0], ensemble.atomnos)
+
+    pruned, _ = prune_by_rmsd_rot_corr(
+        ensemble.atomcoords,
+        ensemble.atomnos,
+        graph,
+        max_rmsd=0.1,
+    )
+
+    assert pruned.shape[0] == 1
