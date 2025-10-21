@@ -6,23 +6,21 @@ version = "1.0.0"
 readme = "README.md"
 keywords = []
 authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 
 [tool.pixi.project]
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
-numpy = ">=1.24"
-numba = ">=0.58.1"
-networkx = ">=2.5.1"
-periodictable = "*"
-ipykernel = ">=7.0.1,<8"
-pytest-cov = ">=7.0.0,<8"
 
 [tool.pixi.pypi-dependencies]
 prism_pruner = { path = ".", editable = true }
-cclib = ">=1.8.1,<2"
+networkx = ">=3.0"
+numpy = ">=2.0"
+numba = ">=0.58.1"
+periodictable = "*"
+scipy = ">=1.10"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
@@ -37,10 +35,11 @@ all = { depends-on = ["fmt", "lint", "types", "test"] }
 
 [tool.pixi.feature.dev.dependencies]
 pytest = ">=8.3"
-pytest-cov = ">=6.0"
+pytest-cov = ">=7.0"
 ruff = ">=0.11"
 mypy = ">=1.15"
 pre-commit = ">=4.2"
+ipykernel = ">=7.0"
 
 [tool.ruff]
 line-length = 100
@@ -98,10 +97,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "periodictable.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "cclib.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
