@@ -18,6 +18,7 @@ numba = "0.58.1.*"
 networkx = "2.5.1.*"
 periodictable = "*"
 ipykernel = ">=7.0.1,<8"
+pytest-cov = ">=7.0.0,<8"
 
 [tool.pixi.pypi-dependencies]
 prism_pruner = { path = ".", editable = true }
