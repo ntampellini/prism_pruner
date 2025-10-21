@@ -1,4 +1,3 @@
-# coding=utf-8
 """PRISM - PRuning Interface for Similar Molecules."""
 
 import numpy as np

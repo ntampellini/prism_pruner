@@ -1,4 +1,3 @@
-# coding=utf-8
 """PRISM - PRuning Interface for Similar Molecules."""
 
 from periodictable import core, covalent_radius, mass
