@@ -1,6 +1,7 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 import numpy as np
@@ -28,111 +29,99 @@ from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2
 from prism_pruner.utils import rotate_dihedral
 
 
+@dataclass
 class Torsion:
     """Torsion class."""
 
-    def __repr__(self) -> str:
-        """Return Torsion repr string."""
-        if hasattr(self, "n_fold"):
-            return f"Torsion({self.i1}, {self.i2}, {self.i3}, {self.i4}; {self.n_fold}-fold)"
-        return f"Torsion({self.i1}, {self.i2}, {self.i3}, {self.i4})"
+    i1: int
+    i2: int
+    i3: int
+    i4: int
+    mode: str | None = None
 
-    def __init__(self, i1: int, i2: int, i3: int, i4: int):
-        self.i1 = i1
-        self.i2 = i2
-        self.i3 = i3
-        self.i4 = i4
-        self.torsion = (i1, i2, i3, i4)
-        self.mode: str | None = None
+    @property
+    def torsion(self) -> tuple[int, int, int, int]:
+        """Return tuple of indices defining the torsion."""
+        return (self.i1, self.i2, self.i3, self.i4)
 
-    def in_cycle(self, graph: Graph) -> bool:
-        """Return True if the torsion is part of a cycle."""
-        graph.remove_edge(self.i2, self.i3)
-        cyclical: bool = has_path(graph, self.i1, self.i4)
-        graph.add_edge(self.i2, self.i3)
-        return cyclical
 
-    def is_rotable(
-        self,
-        graph: Graph,
-        hydrogen_bonds: list[list[int]],
-        keepdummy: bool = False,
-    ) -> bool:
-        """Return True if the Torsion object is rotatable.
+def in_cycle(torsion: Torsion, graph: Graph) -> bool:
+    """Return True if the torsion is part of a cycle."""
+    graph.remove_edge(torsion.i2, torsion.i3)
+    cyclical: bool = has_path(graph, torsion.i1, torsion.i4)
+    graph.add_edge(torsion.i2, torsion.i3)
+    return cyclical
 
-        hydrogen bonds: iterable with pairs of sorted atomic indices.
-        """
-        if sorted((self.i2, self.i3)) in hydrogen_bonds:
-            # self.n_fold = 6
-            # # This has to be an intermolecular HB: rotate it
-            # return True
-            return False
 
-        if _is_free(self.i2, graph) or (_is_free(self.i3, graph)):
-            if keepdummy or (
-                _is_nondummy(self.i2, self.i3, graph) and (_is_nondummy(self.i3, self.i2, graph))
-            ):
-                self.n_fold = self.get_n_fold(graph)
-                return True
+def is_rotable(
+    torsion: Torsion,
+    graph: Graph,
+    hydrogen_bonds: list[list[int]],
+    keepdummy: bool = False,
+) -> bool:
+    """Return True if the Torsion object is rotatable.
 
+    hydrogen bonds: iterable with pairs of sorted atomic indices.
+    """
+    if sorted((torsion.i2, torsion.i3)) in hydrogen_bonds:
+        # self.n_fold = 6
+        # # This has to be an intermolecular HB: rotate it
+        # return True
         return False
 
-    def get_n_fold(self, graph: Graph) -> int:
-        """Return the n-fold of the rotation."""
-        nums = (graph.nodes[self.i2]["atomnos"], graph.nodes[self.i3]["atomnos"])
+    if _is_free(torsion.i2, graph) or (_is_free(torsion.i3, graph)):
+        if keepdummy or (
+            _is_nondummy(torsion.i2, torsion.i3, graph)
+            and (_is_nondummy(torsion.i3, torsion.i2, graph))
+        ):
+            return True
 
-        if 1 in nums:
-            return 6  # H-N, H-O hydrogen bonds
+    return False
 
-        if is_amide_n(self.i2, graph, mode=2) or (is_amide_n(self.i3, graph, mode=2)):
-            # tertiary amides rotations are 2-fold
-            return 2
 
-        if (6 in nums) or (7 in nums) or (16 in nums):  # if C, N or S atoms
-            sp_n_i2 = get_sp_n(self.i2, graph)
-            sp_n_i3 = get_sp_n(self.i3, graph)
+def get_n_fold(torsion: Torsion, graph: Graph) -> int:
+    """Return the n-fold of the rotation."""
+    nums = (graph.nodes[torsion.i2]["atomnos"], graph.nodes[torsion.i3]["atomnos"])
 
-            if 3 == sp_n_i2 == sp_n_i3:
+    if 1 in nums:
+        return 6  # H-N, H-O hydrogen bonds
+
+    if is_amide_n(torsion.i2, graph, mode=2) or (is_amide_n(torsion.i3, graph, mode=2)):
+        # tertiary amides rotations are 2-fold
+        return 2
+
+    if (6 in nums) or (7 in nums) or (16 in nums):  # if C, N or S atoms
+        sp_n_i2 = get_sp_n(torsion.i2, graph)
+        sp_n_i3 = get_sp_n(torsion.i3, graph)
+
+        if 3 == sp_n_i2 == sp_n_i3:
+            return 3
+
+        if 3 in (sp_n_i2, sp_n_i3):  # Csp3-X, Nsp3-X, Ssulfone-X
+            if torsion.mode == "csearch":
                 return 3
 
-            if 3 in (sp_n_i2, sp_n_i3):  # Csp3-X, Nsp3-X, Ssulfone-X
-                if self.mode == "csearch":
-                    return 3
+            elif torsion.mode == "symmetry":
+                return sp_n_i3 or 2
 
-                elif self.mode == "symmetry":
-                    return sp_n_i3 or 2
+        if 2 in (sp_n_i2, sp_n_i3):
+            return 2
 
-            if 2 in (sp_n_i2, sp_n_i3):
-                return 2
+    return 4  # O-O, S-S, Ar-Ar, Ar-CO, and everything else
 
-        return 4  # O-O, S-S, Ar-Ar, Ar-CO, and everything else
 
-    def get_angles(self) -> tuple[int, ...]:
-        """Return the angles associated with the torsion."""
-        d = {
-            2: (0, 180),
-            3: (0, 120, 240),
-            4: (0, 90, 180, 270),
-            6: (0, 60, 120, 180, 240, 300),
-        }
+def get_angles(torsion: Torsion, graph: Graph) -> tuple[int, ...]:
+    """Return the angles associated with the torsion."""
+    d = {
+        2: (0, 180),
+        3: (0, 120, 240),
+        4: (0, 90, 180, 270),
+        6: (0, 60, 120, 180, 240, 300),
+    }
 
-        return d[self.n_fold]
+    n_fold = get_n_fold(torsion, graph)
 
-    def sort_torsion(self, graph: Graph, constrained_indices: Array1D_int) -> None:
-        """Sort torsion indices based on graph.
-
-        Acts on the self.torsion tuple leaving it as it is or
-        reversing it, so that the first index of it (from which
-        rotation will act) is external to the molecule constrained
-        indices. That is we make sure to rotate external groups
-        and not the whole structure.
-        """
-        graph.remove_edge(self.i2, self.i3)
-        for d in constrained_indices.flatten():
-            if has_path(graph, self.i2, d):
-                # self.torsion = tuple(reversed(self.torsion))
-                self.torsion = self.torsion[::-1]
-        graph.add_edge(self.i2, self.i3)
+    return d[n_fold]
 
 
 def _is_free(index: int, graph: Graph) -> bool:
@@ -399,7 +388,9 @@ def _get_torsions(
             t = Torsion(*path)
             t.mode = mode
 
-            if (not t.in_cycle(graph)) and t.is_rotable(graph, hydrogen_bonds, keepdummy=keepdummy):
+            if (not in_cycle(t, graph)) and is_rotable(
+                t, graph, hydrogen_bonds, keepdummy=keepdummy
+            ):
                 torsions.append(t)
     # Create non-redundant torsion objects
     # Rejects (4,3,2,1) if (1,2,3,4) is present

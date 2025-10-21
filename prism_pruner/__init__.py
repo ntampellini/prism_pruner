@@ -12,6 +12,7 @@ from prism_pruner.torsion_module import (
     _get_hydrogen_bonds,
     _get_torsions,
     _is_nondummy,
+    get_angles,
     rotationally_corrected_rmsd_and_max,
 )
 from prism_pruner.typing import (
@@ -453,7 +454,7 @@ def prune_by_rmsd_rot_corr(
     torsions = [t for t in torsions if 1 not in [atomnos[i] for i in t.torsion]]
 
     # get torsions angles
-    angles = [t.get_angles() for t in torsions]
+    angles = [get_angles(t, graph) for t in torsions]
 
     # Used specific directionality of torsions so that we always
     # rotate the dummy portion (the one attached to the last index)
