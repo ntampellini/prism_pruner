@@ -193,12 +193,11 @@ def get_phenyls(coords: Array2D_float, atomnos: Array1D_int) -> Array3D_float:
 def _get_phenyl_ids(i: int, graph: Graph) -> list[int] | None:
     """If index i is part of a phenyl, return the six heavy atoms ids associated with the ring."""
     for n in neighbors(graph, i):
-        paths: list[list[int]] = all_simple_paths(graph, source=i, target=n, cutoff=6)
-        for path in paths:
+        for path in all_simple_paths(graph, source=i, target=n, cutoff=6):
             if len(path) == 6:
                 if all(graph.nodes[n]["atomnos"] != 1 for n in path):
                     if all(len(neighbors(graph, i)) == 3 for i in path):
-                        return path
+                        return path  # type: ignore[no-any-return]
 
     return None
 

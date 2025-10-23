@@ -412,7 +412,7 @@ def prune_by_rmsd_rot_corr(
     # atoms on the two molecular fragment in the provided graph, and
     # then removing it before returning
     if len(subgraphs) == 2:
-        subgraphs = [list(set) for set in connected_components(graph)]
+        subgraphs = [list(vals) for vals in connected_components(graph)]
         all_dists_array = all_dists(ref[list(subgraphs[0])], ref[list(subgraphs[1])])
         min_d = np.min(all_dists_array)
         s1, s2 = np.where(all_dists_array == min_d)
