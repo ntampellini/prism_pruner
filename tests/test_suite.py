@@ -20,7 +20,7 @@ def test_two_identical() -> None:
     os.chdir(test_dir)
     mol = read_xyz("P4_folded.xyz")
     coords = np.stack((mol.atomcoords[0], mol.atomcoords[0]))
-    graph = graphize(mol.atomcoords[0], mol.atomnos)
+    graph = graphize(mol.atomnos, mol.atomcoords[0])
 
     pruned, _ = prune_by_rmsd(coords, mol.atomnos)
     assert len(pruned) == 1
@@ -39,7 +39,7 @@ def test_two_different() -> None:
     mol1 = read_xyz("P4_folded.xyz")
     mol2 = read_xyz("P4_hairpin.xyz")
 
-    graph1 = graphize(mol1.atomcoords[0], mol1.atomnos)
+    graph1 = graphize(mol1.atomnos, mol1.atomcoords[0])
     coords = np.stack((mol1.atomcoords[0], mol2.atomcoords[0]))
 
     pruned, _ = prune_by_rmsd(coords, mol1.atomnos)
@@ -86,7 +86,7 @@ def test_ensemble_rmsd_rot_corr() -> None:
     os.chdir(test_dir)
 
     ensemble = read_xyz("ensemble_100.xyz")
-    graph = graphize(ensemble.atomcoords[0], ensemble.atomnos)
+    graph = graphize(ensemble.atomnos, ensemble.atomcoords[0])
 
     pruned, _ = prune_by_rmsd_rot_corr(
         ensemble.atomcoords,
@@ -109,7 +109,7 @@ def test_rmsd_rot_corr_segmented_graph_2_mols() -> None:
     os.chdir(test_dir)
 
     ensemble = read_xyz("MTBE_tBuOH_ens.xyz")
-    graph = graphize(ensemble.atomcoords[0], ensemble.atomnos)
+    graph = graphize(ensemble.atomnos, ensemble.atomcoords[0])
 
     pruned, _ = prune_by_rmsd_rot_corr(
         ensemble.atomcoords,
