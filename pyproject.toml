@@ -6,7 +6,7 @@ version = "1.0.0"
 readme = "README.md"
 keywords = []
 authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 
 [tool.pixi.project]
 channels = ["conda-forge"]
