@@ -1,6 +1,6 @@
-"""PRISM - PRuning Interface for Similar Molecules."""
+"""Algebra utilities."""
 
-from typing import cast
+from typing import Sequence, cast
 
 import numba as nb
 import numpy as np
@@ -20,60 +20,55 @@ def njit_fastmath_typed(func: F) -> F:
 
 @njit_typed
 def norm(vec: Array1D_int) -> Array1D_int:
-    """Return the normalized vector.
-
-    A tad faster than Numpy version.
-    Only for 3D vectors.
     """
-    norm: Array1D_int = vec / np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))
+    Normalize a vector (3D only).
 
-    return norm
+    Note: a tad faster than Numpy version.
+    """
+    return vec / np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))  # type: ignore[no-any-return]
 
 
 @njit_typed
 def norm_of(vec: Array1D_int) -> float:
-    """Return the norm of the vector.
-
-    A tad faster than Numpy version, but
-    only compatible with 3D vectors.
     """
-    norm_ang: float = np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))
+    Norm of a vector (3D only).
 
-    return norm_ang
+    Note: a tad faster than Numpy version
+    """
+    return float(np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])))
 
 
 @njit_typed
 def vec_angle(v1: Array1D_int, v2: Array1D_int) -> float:
     """Return the planar angle defined by two 3D vectors."""
-    v1_u = norm(v1)
-    v2_u = norm(v2)
-    angle_deg: float = (
-        np.arccos(clip(np.dot(v1_u, v2_u), np.float32(-1.0), np.float32(+1.0))) * 180 / np.pi
+    return float(
+        np.degrees(
+            np.arccos(
+                clip(np.dot(norm(v1), norm(v2)), -1.0, 1.0),
+            )
+        )
     )
-    return angle_deg
 
 
 @njit_typed
-def clip(n: np.float32, lower: np.float32, higher: np.float32) -> np.float32:
+def clip[T: (np.floating)](n: T, lower: T, higher: T) -> T:
     """Jittable version of np.clip for single values."""
     if n > higher:
         return higher
     elif n < lower:
         return lower
-    else:
-        return n
+
+    return n
 
 
 @njit_typed
 def dihedral(p: Array2D_float) -> float:
-    """Return dihedral angle in degrees from 4 3D vecs.
+    """
+    Find dihedral angle in degrees from 4 3D vecs.
 
     Praxeolitic formula: 1 sqrt, 1 cross product.
     """
-    p0 = p[0]
-    p1 = p[1]
-    p2 = p[2]
-    p3 = p[3]
+    p0, p1, p2, p3 = p
 
     b0 = -1.0 * (p1 - p0)
     b1 = p2 - p1
@@ -96,55 +91,46 @@ def dihedral(p: Array2D_float) -> float:
     x = np.dot(v, w)
     y = np.dot(np.cross(b1, v), w)
 
-    dihedral_deg: float = np.degrees(np.arctan2(y, x))
-
-    return dihedral_deg
+    return float(np.degrees(np.arctan2(y, x)))
 
 
 @njit_typed
 def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
-    """Get the rotation matrix from the rotation pivot.
+    """
+    Get the rotation matrix from the rotation pivot using a quaternion.
 
-    Return the rotation matrix that rotates a system around the given pointer
-    of angle degrees. The algorithm is based on scipy quaternions.
-    :params pointer: a 3D vector
-    :params angle: an int/float, in degrees
+    :param pointer: 3D vector representing the rotation pivot
+    :param angle: rotation angle in degrees
     :return rotation_matrix: matrix that applied to a point, rotates it along the pointer
     """
     assert pointer.shape[0] == 3
 
+    angle_2 = np.radians(angle) / 2
+    sin = np.sin(angle_2)
     pointer = norm(pointer)
-    angle *= np.pi / 180
-    quat = np.array(
+    return quaternion_to_rotation_matrix(
         [
-            np.sin(angle / 2) * pointer[0],
-            np.sin(angle / 2) * pointer[1],
-            np.sin(angle / 2) * pointer[2],
-            np.cos(angle / 2),
+            sin * pointer[0],
+            sin * pointer[1],
+            sin * pointer[2],
+            np.cos(angle_2),
         ]
     )
-    # normalized quaternion, scalar last (i j k w)
-
-    return quaternion_to_rotation_matrix(quat)
 
 
 @njit_typed
-def quaternion_to_rotation_matrix(quat: Array1D_int) -> Array2D_float:
-    """Covert a quaternion into a full three-dimensional rotation matrix.
+def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Array2D_float:
+    """
+    Convert a quaternion into a full three-dimensional rotation matrix.
 
-    Input
-    :param Q: A 4 element array representing the quaternion (q0,q1,q2,q3)
+    This rotation matrix converts a point in the local reference frame to a
+    point in the global reference frame.
 
-    Output
-    :return: A 3x3 element matrix representing the full 3D rotation matrix.
-    This rotation matrix converts a point in the local reference
-    frame to a point in the global reference frame.
+    :param quat: 4-element array representing the quaternion (q0, q1, q2, q3)
+    :return: 3x3 element array representing the full 3D rotation matrix
     """
     # Extract the values from Q (adjusting for scalar last in input)
-    q0 = quat[3]
-    q1 = quat[0]
-    q2 = quat[1]
-    q3 = quat[2]
+    q1, q2, q3, q0 = quat
 
     # First row of the rotation matrix
     r00 = 2 * (q0 * q0 + q1 * q1) - 1
@@ -162,9 +148,7 @@ def quaternion_to_rotation_matrix(quat: Array1D_int) -> Array2D_float:
     r22 = 2 * (q0 * q0 + q3 * q3) - 1
 
     # 3x3 rotation matrix
-    rot_matrix = np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
-
-    return np.ascontiguousarray(rot_matrix)
+    return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
 @njit_fastmath_typed
@@ -233,16 +217,15 @@ def all_dists(a: Array2D_float, b: Array2D_float) -> Array2D_float:
 @njit_typed
 def kronecker_delta(i: int, j: int) -> int:
     """Kronecker delta."""
-    if i == j:
-        return 1
-    return 0
+    return int(i == j)
 
 
 @njit_typed
-def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_int:
-    """Return the moments of inertia of the three principal axes.
+def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
+    """
+    Find the moments of inertia of the three principal axes.
 
-    Return the diagonal of the diagonalized inertia tensor, that is
+    :return: diagonal of the diagonalized inertia tensor, that is
     a shape (3,) array with the moments of inertia along the main axes.
     (I_x, I_y and largest I_z last)
     """
@@ -266,40 +249,37 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
 
 @njit_typed
 def diagonalize(a: Array2D_float) -> Array2D_float:
-    """Return the diagonalized matrix."""
+    """Build the diagonalized matrix."""
     eigenvalues_of_a, eigenvectors_of_a = np.linalg.eig(a)
     b = eigenvectors_of_a[:, np.abs(eigenvalues_of_a).argsort()]
-    diagonal_matrix: Array2D_float = np.dot(np.linalg.inv(b), np.dot(a, b))
-    return diagonal_matrix
+    return np.dot(np.linalg.inv(b), np.dot(a, b))  # type: ignore[no-any-return]
 
 
 @njit_typed
-def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_int:
-    """Return the center of mass for the atomic system."""
+def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
+    """Find the center of mass for the atomic system."""
     total_mass = sum([masses[i] for i in range(len(coords))])
     w = np.array([0.0, 0.0, 0.0])
     for i in range(len(coords)):
         w += coords[i] * masses[i]
-    com: Array1D_int = w / total_mass
-    return com
+    return w / total_mass  # type: ignore[no-any-return]
 
 
 @njit_typed
 def get_moi_deviation_vec(
     coords1: Array2D_float, coords2: Array2D_float, masses: Array1D_float
 ) -> Array1D_float:
-    """Return the realative difference of the three principal axes moments of inertia."""
+    """Determine the relative difference of the three principal axes moments of inertia."""
     im_1 = get_inertia_moments(coords1, masses)
     im_2 = get_inertia_moments(coords2, masses)
 
-    vec: Array1D_float = np.abs(im_1 - im_2) / im_1
-
-    return vec
+    return np.abs(im_1 - im_2) / im_1
 
 
 @njit_typed
 def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
-    """Return the rotation matrix that aligns vectors q to p (Kabsch algorithm).
+    """
+    Build the rotation matrix that aligns vectors q to p (Kabsch algorithm).
 
     Assumes centered vector sets (i.e. their mean is the origin).
     """
@@ -308,12 +288,8 @@ def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
 
     # Compute the SVD
     v, _, w = np.linalg.svd(cov_mat)
-    d = (np.linalg.det(v) * np.linalg.det(w)) < 0.0
 
-    if d:
+    if (np.linalg.det(v) * np.linalg.det(w)) < 0.0:
         v[:, -1] = -v[:, -1]
 
-    # Create Rotation matrix u
-    rot_mat: Array2D_float = np.dot(v, w)
-
-    return rot_mat
+    return np.dot(v, w)  # type: ignore[no-any-return]
