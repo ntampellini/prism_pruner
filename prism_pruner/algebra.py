@@ -1,67 +1,33 @@
 """Algebra utilities."""
 
-from typing import Sequence, cast
+from typing import Sequence
 
-import numba as nb
 import numpy as np
 
-from prism_pruner.typing import Array1D_float, Array1D_int, Array2D_float, Array3D_float, F
+from prism_pruner.typing import Array1D_float, Array1D_int, Array2D_float, Array3D_float
 
 
-def njit_typed(func: F) -> F:
-    """Mypy wrapper preserving type information."""
-    return cast("F", nb.njit(func))
-
-
-def njit_fastmath_typed(func: F) -> F:
-    """Mypy wrapper preserving type information."""
-    return cast("F", nb.njit(func, fastmath=True))
-
-
-@njit_typed
 def norm(vec: Array1D_int) -> Array1D_int:
-    """
-    Normalize a vector (3D only).
-
-    Note: a tad faster than Numpy version.
-    """
+    """Normalize a vector (3D only)."""
     return vec / np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))  # type: ignore[no-any-return]
 
 
-@njit_typed
 def norm_of(vec: Array1D_int) -> float:
-    """
-    Norm of a vector (3D only).
-
-    Note: a tad faster than Numpy version
-    """
+    """Norm of a vector (3D only)."""
     return float(np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])))
 
 
-@njit_typed
 def vec_angle(v1: Array1D_int, v2: Array1D_int) -> float:
     """Return the planar angle defined by two 3D vectors."""
     return float(
         np.degrees(
             np.arccos(
-                clip(np.dot(norm(v1), norm(v2)), -1.0, 1.0),
+                np.clip(np.dot(norm(v1), norm(v2)), -1.0, 1.0),
             )
         )
     )
 
 
-@njit_typed
-def clip[T: (np.floating)](n: T, lower: T, higher: T) -> T:
-    """Jittable version of np.clip for single values."""
-    if n > higher:
-        return higher
-    elif n < lower:
-        return lower
-
-    return n
-
-
-@njit_typed
 def dihedral(p: Array2D_float) -> float:
     """
     Find dihedral angle in degrees from 4 3D vecs.
@@ -94,7 +60,6 @@ def dihedral(p: Array2D_float) -> float:
     return float(np.degrees(np.arctan2(y, x)))
 
 
-@njit_typed
 def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
     """
     Get the rotation matrix from the rotation pivot using a quaternion.
@@ -118,7 +83,6 @@ def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
     )
 
 
-@njit_typed
 def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Array2D_float:
     """
     Convert a quaternion into a full three-dimensional rotation matrix.
@@ -151,76 +115,11 @@ def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Arra
     return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
-@njit_fastmath_typed
-def all_dists(a: Array2D_float, b: Array2D_float) -> Array2D_float:
-    """Return a 2D matrix of all the pairwise distances between the two vector sets."""
-    assert a.shape[1] == b.shape[1]
-    C = np.empty((a.shape[0], b.shape[0]), a.dtype)
-    I_BLK = 32
-    J_BLK = 32
-
-    # workaround to get the right datatype for acc
-    init_val_arr = np.zeros(1, a.dtype)
-    init_val = init_val_arr[0]
-
-    # Blocking and partial unrolling
-    # Beneficial if the second dimension is large -> computationally bound problem
-    for ii in nb.prange(a.shape[0] // I_BLK):
-        for jj in range(b.shape[0] // J_BLK):
-            for i in range(I_BLK // 4):
-                for j in range(J_BLK // 2):
-                    acc_0 = init_val
-                    acc_1 = init_val
-                    acc_2 = init_val
-                    acc_3 = init_val
-                    acc_4 = init_val
-                    acc_5 = init_val
-                    acc_6 = init_val
-                    acc_7 = init_val
-                    for k in range(a.shape[1]):
-                        acc_0 += (a[ii * I_BLK + i * 4 + 0, k] - b[jj * J_BLK + j * 2 + 0, k]) ** 2
-                        acc_1 += (a[ii * I_BLK + i * 4 + 0, k] - b[jj * J_BLK + j * 2 + 1, k]) ** 2
-                        acc_2 += (a[ii * I_BLK + i * 4 + 1, k] - b[jj * J_BLK + j * 2 + 0, k]) ** 2
-                        acc_3 += (a[ii * I_BLK + i * 4 + 1, k] - b[jj * J_BLK + j * 2 + 1, k]) ** 2
-                        acc_4 += (a[ii * I_BLK + i * 4 + 2, k] - b[jj * J_BLK + j * 2 + 0, k]) ** 2
-                        acc_5 += (a[ii * I_BLK + i * 4 + 2, k] - b[jj * J_BLK + j * 2 + 1, k]) ** 2
-                        acc_6 += (a[ii * I_BLK + i * 4 + 3, k] - b[jj * J_BLK + j * 2 + 0, k]) ** 2
-                        acc_7 += (a[ii * I_BLK + i * 4 + 3, k] - b[jj * J_BLK + j * 2 + 1, k]) ** 2
-                    C[ii * I_BLK + i * 4 + 0, jj * J_BLK + j * 2 + 0] = np.sqrt(acc_0)
-                    C[ii * I_BLK + i * 4 + 0, jj * J_BLK + j * 2 + 1] = np.sqrt(acc_1)
-                    C[ii * I_BLK + i * 4 + 1, jj * J_BLK + j * 2 + 0] = np.sqrt(acc_2)
-                    C[ii * I_BLK + i * 4 + 1, jj * J_BLK + j * 2 + 1] = np.sqrt(acc_3)
-                    C[ii * I_BLK + i * 4 + 2, jj * J_BLK + j * 2 + 0] = np.sqrt(acc_4)
-                    C[ii * I_BLK + i * 4 + 2, jj * J_BLK + j * 2 + 1] = np.sqrt(acc_5)
-                    C[ii * I_BLK + i * 4 + 3, jj * J_BLK + j * 2 + 0] = np.sqrt(acc_6)
-                    C[ii * I_BLK + i * 4 + 3, jj * J_BLK + j * 2 + 1] = np.sqrt(acc_7)
-
-        # Remainder j
-        for i in range(I_BLK):
-            for j in range((b.shape[0] // J_BLK) * J_BLK, b.shape[0]):
-                acc_0 = init_val
-                for k in range(a.shape[1]):
-                    acc_0 += (a[ii * I_BLK + i, k] - b[j, k]) ** 2
-                C[ii * I_BLK + i, j] = np.sqrt(acc_0)
-
-    # Remainder i
-    for i in range((a.shape[0] // I_BLK) * I_BLK, a.shape[0]):
-        for j in range(b.shape[0]):
-            acc_0 = init_val
-            for k in range(a.shape[1]):
-                acc_0 += (a[i, k] - b[j, k]) ** 2
-            C[i, j] = np.sqrt(acc_0)
-
-    return C
-
-
-@njit_typed
 def kronecker_delta(i: int, j: int) -> int:
     """Kronecker delta."""
     return int(i == j)
 
 
-@njit_typed
 def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
     """
     Find the moments of inertia of the three principal axes.
@@ -247,7 +146,6 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     return np.diag(inertia_moment_matrix)
 
 
-@njit_typed
 def diagonalize(a: Array2D_float) -> Array2D_float:
     """Build the diagonalized matrix."""
     eigenvalues_of_a, eigenvectors_of_a = np.linalg.eig(a)
@@ -255,7 +153,6 @@ def diagonalize(a: Array2D_float) -> Array2D_float:
     return np.dot(np.linalg.inv(b), np.dot(a, b))  # type: ignore[no-any-return]
 
 
-@njit_typed
 def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
     """Find the center of mass for the atomic system."""
     total_mass = sum([masses[i] for i in range(len(coords))])
@@ -265,7 +162,6 @@ def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_floa
     return w / total_mass  # type: ignore[no-any-return]
 
 
-@njit_typed
 def get_moi_deviation_vec(
     coords1: Array2D_float, coords2: Array2D_float, masses: Array1D_float
 ) -> Array1D_float:
@@ -276,7 +172,6 @@ def get_moi_deviation_vec(
     return np.abs(im_1 - im_2) / im_1
 
 
-@njit_typed
 def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
     """
     Build the rotation matrix that aligns vectors q to p (Kabsch algorithm).
