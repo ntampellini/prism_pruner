@@ -4,12 +4,12 @@ import os
 
 import numpy as np
 
-from prism_pruner import (
+from prism_pruner.graph_manipulations import graphize
+from prism_pruner.pruner import (
     prune_by_moment_of_inertia,
     prune_by_rmsd,
     prune_by_rmsd_rot_corr,
 )
-from prism_pruner.graph_manipulations import graphize
 from prism_pruner.utils import read_xyz
 
 test_dir = os.path.dirname(os.path.realpath(__file__))
