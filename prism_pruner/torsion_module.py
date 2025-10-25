@@ -420,7 +420,6 @@ def rotationally_corrected_rmsd_and_max(
     for i, torsion in enumerate(torsions):
         best_rmsd = 1e10
 
-        # for angle_set in combinations
         # Look for the rotational angle set that minimizes the torsion RMSD and save it for later
         for angle in angles[i]:
             coord = rotate_dihedral(coord, torsion, angle, indices_to_be_moved=[torsion[3]])

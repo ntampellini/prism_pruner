@@ -1,5 +1,6 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
+from time import perf_counter
 from typing import Any, Callable, Sequence
 
 import numpy as np
@@ -24,7 +25,7 @@ from prism_pruner.typing import (
     F,
     FloatIterable,
 )
-from prism_pruner.utils import flatten, get_double_bonds_indices
+from prism_pruner.utils import flatten, get_double_bonds_indices, time_to_string
 
 __version__ = "1.0.0"
 
@@ -271,6 +272,8 @@ class Pruner:
 
         Sets the self.structures and the corresponding self.mask attributes.
         """
+        start_t = -perf_counter()
+
         if self.mode is None:
             known = tuple(self.defaults_dict.keys())
             raise Exception(
@@ -318,6 +321,8 @@ class Pruner:
             if k == 1 or 20 * k < np.count_nonzero(out_mask):
                 before = np.count_nonzero(out_mask)
 
+                start_t_k = perf_counter()
+
                 # compute similarities and get back the out_mask
                 # and the pairings to be added to cache
                 out_mask = self._main_compute_group(
@@ -330,14 +335,22 @@ class Pruner:
                 newly_discarded = before - after
 
                 if self.debugfunction is not None:
+                    elapsed = start_t_k - perf_counter()
                     self.debugfunction(
                         f"DEBUG: Pruner({self.mode}) - k={k}, rejected {newly_discarded} "
-                        + f"(keeping {after}/{len(out_mask)})"
+                        + f"(keeping {after}/{len(out_mask)}), in {time_to_string(elapsed)}"
                     )
 
         del self.cache
         self.mask = out_mask
         self.structures = self.structures[self.mask]
+
+        if self.debugfunction is not None:
+            elapsed = start_t - perf_counter()
+            self.debugfunction(
+                f"DEBUG: Pruner({self.mode}) - keeping "
+                + f"{after}/{len(out_mask)} ({time_to_string(elapsed)})"
+            )
 
 
 def prune_by_rmsd(

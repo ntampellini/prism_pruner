@@ -1,14 +1,13 @@
 """Graph manipulation utilities for molecular structures."""
 
 from functools import lru_cache
-from itertools import combinations
 
 import numpy as np
 from networkx import Graph, all_simple_paths, from_numpy_array, set_node_attributes
 
 from prism_pruner.algebra import all_dists, dihedral, norm_of
 from prism_pruner.pt import pt
-from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array3D_float
+from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float
 
 
 @lru_cache()
@@ -150,24 +149,6 @@ def is_phenyl(coords: Array2D_float) -> bool:
     flat_delta: float = 1 - np.abs(np.cos(dihedral(coords[[0, 1, 2, 3]]) * np.pi / 180))
 
     return flat_delta < threshold_delta
-
-
-def get_phenyls(coords: Array2D_float, atoms: Array1D_int) -> Array3D_float:
-    """Return a (n, 6, 3) array where the first dimension is the aromatic rings detected."""
-    if len(atoms) < 6:
-        return np.array([])
-
-    c_n_indices = np.fromiter((i for i, a in enumerate(atoms) if a in (6, 7)), dtype=atoms.dtype)
-    comb = combinations(c_n_indices, 6)
-
-    output = []
-    for c in comb:
-        mask = np.fromiter((i in c for i in range(len(atoms))), dtype=bool)
-        coords_ = coords[mask]
-        if is_phenyl(coords_):
-            output.append(coords_)
-
-    return np.array(output)
 
 
 def get_phenyl_ids(index: int, graph: Graph) -> list[int] | None:

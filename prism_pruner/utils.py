@@ -1,8 +1,7 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
-import time
 from pathlib import Path
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, Sequence, TextIO
 
 import numpy as np
 from numpy.linalg import LinAlgError
@@ -172,38 +171,6 @@ def time_to_string(total_time: float, verbose: bool = False, digits: int = 1) ->
     return timestring
 
 
-def pretty_num(n: float) -> str:
-    """Prettify float values to nice strings."""
-    if n < 1e3:
-        return str(n)
-    if n < 1e6:
-        return str(round(n / 1e3, 2)) + " k"
-    return str(round(n / 1e6, 2)) + " M"
-
-
-def loadbar(
-    iteration: int,
-    total: int,
-    prefix: str = "",
-    suffix: str = "",
-    decimals: int = 1,
-    length: int = 50,
-    fill: str = "#",
-) -> None:
-    """Print a loading bar."""
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + "-" * (length - filledLength)
-    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end="\r")
-    if iteration == total:
-        print()
-
-
-def cartesian_product(*arrays: ArrayLike) -> Any:
-    """Compute the cartesian product of generic arrays."""
-    return np.stack(np.meshgrid(*arrays), -1).reshape(-1, len(arrays))
-
-
 double_bonds_thresholds_dict = {
     "CC": 1.4,
     "CN": 1.3,
@@ -261,29 +228,6 @@ def rotate_dihedral(
     coords[mask] = (mat @ (coords[mask] - center).T).T + center
 
     return coords
-
-
-def timing_wrapper(
-    function: Callable[..., object],
-    *args: Any,
-    payload: Any = None,
-    **kwargs: Any,
-) -> tuple[Any, Any, float] | tuple[Any, float]:
-    """Time the execution of a given function, and return an optional additional payload.
-
-    Generic function wrapper that appends the
-    execution time at the end of return.
-    If payload is not None, appends it at the end
-    of the function return, before the elapsed time.
-    """
-    start_time = time.perf_counter()
-    func_return = function(*args, **kwargs)
-    elapsed = time.perf_counter() - start_time
-
-    if payload is None:
-        return func_return, elapsed
-
-    return func_return, payload, elapsed
 
 
 def flatten(array: Sequence[Any], typefunc: type = float) -> list[Any]:
