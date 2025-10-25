@@ -4,8 +4,9 @@ from functools import lru_cache
 
 import numpy as np
 from networkx import Graph, all_simple_paths, from_numpy_array, set_node_attributes
+from scipy.spatial.distance import cdist
 
-from prism_pruner.algebra import all_dists, dihedral, norm_of
+from prism_pruner.algebra import dihedral, norm_of
 from prism_pruner.pt import pt
 from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float
 
@@ -142,7 +143,7 @@ def is_phenyl(coords: Array2D_float) -> bool:
              system, coordinates for the center of that ring
     """
     # if any atomic couple is more than 3 A away from each other, this is not a Ph
-    if np.max(all_dists(coords, coords)) > 3:
+    if np.max(cdist(coords, coords)) > 3:
         return False
 
     threshold_delta: float = 1 - np.cos(10 * np.pi / 180)

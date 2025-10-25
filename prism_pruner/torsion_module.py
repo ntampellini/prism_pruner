@@ -22,7 +22,7 @@ from prism_pruner.graph_manipulations import (
     is_amide_n,
     is_ester_o,
 )
-from prism_pruner.rmsd import rmsd_and_max_numba
+from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2D_int, F
 from prism_pruner.utils import rotate_dihedral
 
@@ -424,7 +424,7 @@ def rotationally_corrected_rmsd_and_max(
         for angle in angles[i]:
             coord = rotate_dihedral(coord, torsion, angle, indices_to_be_moved=[torsion[3]])
 
-            locally_corrected_rmsd, _ = rmsd_and_max_numba(ref[torsion], coord[torsion])
+            locally_corrected_rmsd, _ = rmsd_and_max(ref[torsion], coord[torsion])
 
             if locally_corrected_rmsd < best_rmsd:
                 best_rmsd = locally_corrected_rmsd
@@ -440,7 +440,7 @@ def rotationally_corrected_rmsd_and_max(
             )
 
         if debugfunction is not None:
-            global_rmsd = rmsd_and_max_numba(ref[(atomnos != 1)], coord[(atomnos != 1)])[0]
+            global_rmsd = rmsd_and_max(ref[(atomnos != 1)], coord[(atomnos != 1)])[0]
             debugfunction(
                 f"Torsion {i + 1} - {torsion}: best corr = {torsion_corrections[i]}°, 4-atom RMSD: "
                 + f"{best_rmsd:.3f} A, global RMSD: {global_rmsd:.3f}"
@@ -448,7 +448,7 @@ def rotationally_corrected_rmsd_and_max(
 
     # we should have the optimal orientation on all torsions now:
     # calculate the RMSD (only on heavy atoms)
-    rmsd, maxdev = rmsd_and_max_numba(ref[(atomnos != 1)], coord[(atomnos != 1)])
+    rmsd, maxdev = rmsd_and_max(ref[(atomnos != 1)], coord[(atomnos != 1)])
 
     # since we could have segmented graphs, and therefore potentially only rotate
     # subsets of the graph where the torsion last two indices are,

@@ -6,10 +6,11 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 from networkx import Graph, connected_components
+from scipy.spatial.distance import cdist
 
-from prism_pruner.algebra import all_dists, get_moi_deviation_vec
+from prism_pruner.algebra import get_moi_deviation_vec
 from prism_pruner.pt import pt
-from prism_pruner.rmsd import rmsd_and_max_numba
+from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
     _get_hydrogen_bonds,
     _get_torsions,
@@ -88,7 +89,7 @@ class PrunerConfig:
                 ["max_rmsd", "max_dev"],
             ),
             "rmsd": (
-                rmsd_and_max_numba,
+                rmsd_and_max,
                 [],
                 {},
                 ["max_rmsd", "max_dev"],
@@ -444,7 +445,7 @@ def prune_by_rmsd_rot_corr(
     # then removing it before returning
     if len(subgraphs) == 2:
         subgraphs = [list(vals) for vals in connected_components(graph)]
-        all_dists_array = all_dists(ref[list(subgraphs[0])], ref[list(subgraphs[1])])
+        all_dists_array = cdist(ref[list(subgraphs[0])], ref[list(subgraphs[1])])
         min_d = np.min(all_dists_array)
         s1, s2 = np.where(all_dists_array == min_d)
         i1, i2 = subgraphs[0][s1[0]], subgraphs[1][s2[0]]
