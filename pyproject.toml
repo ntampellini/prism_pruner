@@ -1,8 +1,8 @@
 [project]
 name = "prism_pruner"
 description = "Prism Pruner"
-license = {file = "LICENSE"}
-version = "1.0.0"
+license = "MIT"
+version = "0.0.1"
 readme = "README.md"
 keywords = []
 authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]
@@ -100,7 +100,3 @@ ignore_missing_imports = true
 testpaths = ["tests", "prism_pruner"]
 addopts = "--doctest-modules"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
-
-[build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
