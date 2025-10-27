@@ -13,7 +13,5 @@ The code implements a cached, iterative, divide-and conquer approach on increasi
 - Rotamer-corrected heavy-atom RMSD and maximum deviation
 - Relative deviation of the moments of inertia on the principal axes
 
-Linear algebra-intensive modules are compiled at runtime via [numba](https://github.com/numba/numba).
-
 ## Credits
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [jevandezande/pixi-cookiecutter](https://github.com/jevandezande/pixi-cookiecutter) project template.
