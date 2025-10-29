@@ -404,6 +404,7 @@ def rotationally_corrected_rmsd_and_max(
     torsions: Array2D_int,
     graph: Graph,
     angles: Sequence[Sequence[int]],
+    heavy_atoms_only: bool = True,
     debugfunction: F | None = None,
     return_type: str = "rmsd",
 ) -> tuple[float, float] | Array2D_float:
@@ -447,8 +448,9 @@ def rotationally_corrected_rmsd_and_max(
             )
 
     # we should have the optimal orientation on all torsions now:
-    # calculate the RMSD (only on heavy atoms)
-    rmsd, maxdev = rmsd_and_max(ref[(atomnos != 1)], coord[(atomnos != 1)])
+    # calculate the RMSD
+    mask = (atomnos != 1) if heavy_atoms_only else np.ones(atomnos.shape, dtype=bool)
+    rmsd, maxdev = rmsd_and_max(ref[mask], coord[mask])
 
     # since we could have segmented graphs, and therefore potentially only rotate
     # subsets of the graph where the torsion last two indices are,
