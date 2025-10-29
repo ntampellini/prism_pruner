@@ -9,7 +9,7 @@ jobs:
   test:
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
         os: [ubuntu-latest]
 
     name: Python ${{ matrix.os }} ${{ matrix.python-version }}
