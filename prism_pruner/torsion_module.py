@@ -69,8 +69,8 @@ def is_rotable(
 
     if _is_free(torsion.i2, graph) or (_is_free(torsion.i3, graph)):
         if keepdummy or (
-            _is_nondummy(torsion.i2, torsion.i3, graph)
-            and (_is_nondummy(torsion.i3, torsion.i2, graph))
+            is_nondummy(torsion.i2, torsion.i3, graph)
+            and (is_nondummy(torsion.i3, torsion.i2, graph))
         ):
             return True
 
@@ -149,7 +149,7 @@ def _is_free(index: int, graph: Graph) -> bool:
     return True
 
 
-def _is_nondummy(i: int, root: int, graph: Graph) -> bool:
+def is_nondummy(i: int, root: int, graph: Graph) -> bool:
     """Return whether the torsion is not dummy.
 
     Checks that a molecular rotation along the dihedral
@@ -234,7 +234,7 @@ def _is_nondummy(i: int, root: int, graph: Graph) -> bool:
     return False
 
 
-def _get_hydrogen_bonds(
+def get_hydrogen_bonds(
     coords: Array2D_float,
     atomnos: Array1D_int,
     graph: Graph,
@@ -369,7 +369,7 @@ def _get_quadruplets(graph: Graph) -> Array2D_int:
     return np.array(dihedrals)
 
 
-def _get_torsions(
+def get_torsions(
     graph: Graph,
     hydrogen_bonds: list[list[int]],
     double_bonds: list[tuple[int, int]],
