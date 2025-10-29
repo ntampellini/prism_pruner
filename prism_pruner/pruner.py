@@ -12,10 +12,10 @@ from prism_pruner.algebra import get_moi_deviation_vec
 from prism_pruner.pt import pt
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
-    _get_hydrogen_bonds,
-    _get_torsions,
-    _is_nondummy,
     get_angles,
+    get_hydrogen_bonds,
+    get_torsions,
+    is_nondummy,
     rotationally_corrected_rmsd_and_max,
 )
 from prism_pruner.typing import (
@@ -130,6 +130,11 @@ class PrunerConfig:
                     + "Please set it as:\n"
                     + f">>> config.{name} = value"
                 )
+
+
+# @dataclass
+# class RMSDRotCorrConfig(PrunerConfig):
+# """Configuration dataclass for Pruner."""
 
 
 def _main_eval_similarity(
@@ -461,7 +466,7 @@ def prune_by_rmsd_rot_corr(
     max_dev = max_dev or 2 * max_rmsd
 
     # add hydrogen bonds to molecular graph
-    hydrogen_bonds = _get_hydrogen_bonds(ref, atomnos, graph)
+    hydrogen_bonds = get_hydrogen_bonds(ref, atomnos, graph)
     for hb in hydrogen_bonds:
         graph.add_edge(*hb)
 
@@ -469,7 +474,7 @@ def prune_by_rmsd_rot_corr(
     flat_hbs = set(flatten(hydrogen_bonds))
 
     # get all rotable bonds in the molecule, including dummy rotations
-    torsions = _get_torsions(
+    torsions = get_torsions(
         graph,
         hydrogen_bonds=hydrogen_bonds,
         double_bonds=get_double_bonds_indices(ref, atomnos),
@@ -481,7 +486,7 @@ def prune_by_rmsd_rot_corr(
     torsions = [
         t
         for t in torsions
-        if not (_is_nondummy(t.i2, t.i3, graph) and (_is_nondummy(t.i3, t.i2, graph)))
+        if not (is_nondummy(t.i2, t.i3, graph) and (is_nondummy(t.i3, t.i2, graph)))
     ]
 
     # since we only compute RMSD based on heavy atoms, discard
@@ -500,7 +505,7 @@ def prune_by_rmsd_rot_corr(
     # Used specific directionality of torsions so that we always
     # rotate the dummy portion (the one attached to the last index)
     torsions_ids = [
-        list(t.torsion) if _is_nondummy(t.i2, t.i3, graph) else list(reversed(t.torsion))
+        list(t.torsion) if is_nondummy(t.i2, t.i3, graph) else list(reversed(t.torsion))
         for t in torsions
     ]
 
