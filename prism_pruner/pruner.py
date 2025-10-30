@@ -1,8 +1,9 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, TypeVar
 
 import numpy as np
 from networkx import Graph, connected_components
@@ -23,8 +24,8 @@ from prism_pruner.typing import (
     Array1D_float,
     Array1D_int,
     Array2D_float,
+    Array2D_int,
     Array3D_float,
-    FloatIterable,
 )
 from prism_pruner.utils import flatten, get_double_bonds_indices, time_to_string
 
@@ -36,28 +37,16 @@ class PrunerConfig:
     """Configuration dataclass for Pruner."""
 
     structures: Array3D_float
-    atomnos: Array1D_int
 
     # Optional parameters that get initialized
-    mode: str | None = field(default=None)
     energies: Array1D_float = field(default_factory=lambda: np.array([]))
     ewin: float = field(default=0.0)
-    max_rmsd: float | None = field(default=None)
-    max_dev: float | None = field(default=None)
-    angles: Sequence[Sequence[int]] | None = field(default=None)
-    torsions: Sequence[Sequence[int]] | None = field(default=None)
-    masses: Array1D_float | None = field(default=None)
-    graph: Graph | None = field(default=None)
     debugfunction: Callable[[str], None] | None = field(default=None)
 
     # Computed fields
     calls: int = field(default=0, init=False)
     cache_calls: int = field(default=0, init=False)
     cache: set[tuple[int, int]] = field(default_factory=lambda: set(), init=False)
-
-    defaults_dict: dict[
-        str, tuple[Callable[..., FloatIterable], list[str], dict[str, Any], list[str]]
-    ] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         """Validate inputs and initialize computed fields."""
@@ -75,86 +64,99 @@ class PrunerConfig:
         if self.ewin == 0.0:
             self.ewin = 1.0
 
-        # Initialize defaults_dict
-        self.defaults_dict = {
-            "rmsd_rot_corr": (
-                rotationally_corrected_rmsd_and_max,
-                [
-                    "atomnos",
-                    "torsions",
-                    "graph",
-                    "angles",
-                ],
-                {},
-                ["max_rmsd", "max_dev"],
-            ),
-            "rmsd": (
-                rmsd_and_max,
-                [],
-                {},
-                ["max_rmsd", "max_dev"],
-            ),
-            "moi": (
-                get_moi_deviation_vec,
-                [
-                    "masses",
-                ],
-                {},
-                ["max_dev", "max_dev", "max_dev"],
-            ),
-        }
-
-        if self.mode is not None:
-            self.set_mode(self.mode)
-
-    def set_mode(self, mode: str) -> None:
-        """Set the pruning mode of the Pruner dataclass.
-
-        mode: one of the modes in self.defaults_dict.
-        ("rmsd_rot_corr", "rmsd", "moi")
-        """
-        if mode not in self.defaults_dict.keys():
-            raise NameError(f'pruning mode "{mode}" not recognized.')
-
-        self.mode = mode
-
-        self.eval_func, args_names, kwargs_names, thresholds_names = self.defaults_dict[self.mode]
-        self.args = [getattr(self, name) for name in args_names]
-        self.kwargs = {name: getattr(self, value) for name, value in kwargs_names.items()}
-        self.thresholds: list[float] = [getattr(self, name) for name in thresholds_names]
-
-        for name, value in zip(thresholds_names, self.thresholds, strict=False):
-            if value is None:
-                raise UnboundLocalError(
-                    f'PrunerConfig({self.mode}) does not have a "{name}" attribute. '
-                    + "Please set it as:\n"
-                    + f">>> config.{name} = value"
-                )
+    def evaluate_sim(self, *args: Any, **kwargs: Any) -> bool:
+        """Stub method - override in subclasses as needed."""
+        raise NotImplementedError
 
 
-# @dataclass
-# class RMSDRotCorrConfig(PrunerConfig):
-# """Configuration dataclass for Pruner."""
+T = TypeVar("T", bound=PrunerConfig)
 
 
-def _main_eval_similarity(
-    prunerconfig: PrunerConfig, coords1: Array2D_float, coords2: Array2D_float
-) -> bool:
-    """Evaluate the similarity of two structures.
+@dataclass
+class RMSDRotCorrPrunerConfig(PrunerConfig):
+    """Configuration dataclass for Pruner."""
 
-    Return True if coords1 and coords2 are deemed similar by self.eval_func.
-    Similarity occurs if each value returned by eval_func is below the corresponding
-    threshold of prunerconfig.thresholds.
-    """
-    results = prunerconfig.eval_func(coords1, coords2, *prunerconfig.args, **prunerconfig.kwargs)
-    for r, t in zip(results, prunerconfig.thresholds, strict=False):
-        if r > t:
+    atomnos: Array1D_int = field(kw_only=True)
+    max_rmsd: float = field(kw_only=True)
+    max_dev: float = field(kw_only=True)
+    angles: Sequence[Sequence[int]] = field(kw_only=True)
+    torsions: Array2D_int = field(kw_only=True)
+    graph: Graph = field(kw_only=True)
+    heavy_atoms_only: bool = True
+
+    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
+        """Return if the structures are similar."""
+        rmsd, max_dev = rotationally_corrected_rmsd_and_max(
+            coord1,
+            coord2,
+            atomnos=self.atomnos,
+            torsions=self.torsions,
+            graph=self.graph,
+            angles=self.angles,
+            debugfunction=self.debugfunction,
+            heavy_atoms_only=self.heavy_atoms_only,
+        )
+
+        if rmsd > self.max_rmsd:
             return False
-    return True
+
+        if max_dev > self.max_dev:
+            return False
+
+        return True
+
+
+@dataclass
+class RMSDPrunerConfig(PrunerConfig):
+    """Configuration dataclass for Pruner."""
+
+    atomnos: Array1D_int = field(kw_only=True)
+    max_rmsd: float = field(kw_only=True)
+    max_dev: float = field(kw_only=True)
+    heavy_atoms_only: bool = True
+
+    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
+        """Return if the structures are similar."""
+        if self.heavy_atoms_only:
+            mask = self.atomnos != 1
+        else:
+            mask = np.ones(self.structures[0].shape[0], dtype=bool)
+
+        rmsd, max_dev = rmsd_and_max(
+            coord1[mask],
+            coord2[mask],
+            center=True,
+        )
+
+        if rmsd > self.max_rmsd:
+            return False
+
+        if max_dev > self.max_dev:
+            return False
+
+        return True
+
+
+@dataclass
+class MOIPrunerConfig(PrunerConfig):
+    """Configuration dataclass for Pruner."""
+
+    masses: Array1D_float = field(kw_only=True)
+    max_dev: float = 0.01
+
+    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
+        """Return if the structures are similar."""
+        dev_vec = get_moi_deviation_vec(
+            coord1,
+            coord2,
+            masses=self.masses,
+        )
+
+        return bool((dev_vec < self.max_dev).all())
 
 
 def _main_compute_subrow(
-    prunerconfig: PrunerConfig,
+    prunerconfig: T,
     ref: Array2D_float,
     structures: Array3D_float,
     in_mask: Array1D_bool,
@@ -189,7 +191,7 @@ def _main_compute_subrow(
             elif np.abs(prunerconfig.energies[i1] - prunerconfig.energies[i2]) < prunerconfig.ewin:
                 # function will return True if the structures are similar,
                 # and will stop iterating on this row, returning
-                if _main_eval_similarity(prunerconfig, ref, structure):
+                if prunerconfig.evaluate_sim(ref, structure):
                     return True
 
             # if structures are not similar, add the result to the
@@ -201,7 +203,7 @@ def _main_compute_subrow(
 
 
 def _main_compute_row(
-    prunerconfig: PrunerConfig,
+    prunerconfig: T,
     structures: Array3D_float,
     in_mask: Array1D_bool,
     first_abs_index: int,
@@ -238,7 +240,7 @@ def _main_compute_row(
 
 
 def _main_compute_group(
-    prunerconfig: PrunerConfig,
+    prunerconfig: T,
     structures: Array2D_float,
     in_mask: Array1D_bool,
     k: int,
@@ -275,7 +277,7 @@ def _main_compute_group(
     return out_mask
 
 
-def prune(prunerconfig: PrunerConfig) -> PrunerConfig:
+def prune(prunerconfig: T) -> T:
     """Perform the similarity pruning.
 
     Remove similar structures by repeatedly grouping them into k
@@ -289,22 +291,7 @@ def prune(prunerconfig: PrunerConfig) -> PrunerConfig:
     """
     start_t = perf_counter()
 
-    if prunerconfig.mode is None:
-        known = tuple(prunerconfig.defaults_dict.keys())
-        raise Exception(
-            'Please set the Pruner object "mode" attribute '
-            + f"before pruning. Known modes: {known}"
-        )
-
-    if prunerconfig.mode in ("rmsd_rot_corr"):
-        # all atoms are passed to the functions, but only the
-        # heavy ones are used for the rot. corr. RMSD calcs
-        structures = prunerconfig.structures
-
-    else:
-        # only feed non-hydrogen atoms to eval funcs
-        heavy_atoms = prunerconfig.atomnos != 1
-        structures = np.array([structure[heavy_atoms] for structure in prunerconfig.structures])
+    structures = deepcopy(prunerconfig.structures)
 
     # initialize the output mask
     out_mask = np.ones(shape=prunerconfig.structures.shape[0], dtype=np.bool_)
@@ -353,7 +340,8 @@ def prune(prunerconfig: PrunerConfig) -> PrunerConfig:
             if prunerconfig.debugfunction is not None:
                 elapsed = start_t_k - perf_counter()
                 prunerconfig.debugfunction(
-                    f"DEBUG: Pruner({prunerconfig.mode}) - k={k}, rejected {newly_discarded} "
+                    # NOTE: add type of pruner to debug
+                    f"DEBUG: Pruner - k={k}, rejected {newly_discarded} "
                     + f"(keeping {after}/{len(out_mask)}), in {time_to_string(elapsed)}"
                 )
 
@@ -364,8 +352,7 @@ def prune(prunerconfig: PrunerConfig) -> PrunerConfig:
     if prunerconfig.debugfunction is not None:
         elapsed = start_t - perf_counter()
         prunerconfig.debugfunction(
-            f"DEBUG: Pruner({prunerconfig.mode}) - keeping "
-            + f"{after}/{len(out_mask)} ({time_to_string(elapsed)})"
+            "DEBUG: Pruner - keeping " + f"{after}/{len(out_mask)} ({time_to_string(elapsed)})"
         )
 
     return prunerconfig
@@ -391,12 +378,11 @@ def prune_by_rmsd(
     max_dev = max_dev or 2 * max_rmsd
 
     # set up PrunerConfig dataclass
-    prunerconfig = PrunerConfig(
-        structures,
-        atomnos,
+    prunerconfig = RMSDPrunerConfig(
+        structures=structures,
+        atomnos=atomnos,
         max_rmsd=max_rmsd,
         max_dev=max_dev,
-        mode="rmsd",
         debugfunction=debugfunction,
     )
 
@@ -504,10 +490,12 @@ def prune_by_rmsd_rot_corr(
 
     # Used specific directionality of torsions so that we always
     # rotate the dummy portion (the one attached to the last index)
-    torsions_ids = [
-        list(t.torsion) if is_nondummy(t.i2, t.i3, graph) else list(reversed(t.torsion))
-        for t in torsions
-    ]
+    torsions_ids = np.asarray(
+        [
+            list(t.torsion) if is_nondummy(t.i2, t.i3, graph) else list(reversed(t.torsion))
+            for t in torsions
+        ]
+    )
 
     # Set up final mask and cache
     final_mask = np.ones(structures.shape[0], dtype=bool)
@@ -540,16 +528,15 @@ def prune_by_rmsd_rot_corr(
         logfunction("\n")
 
     # Initialize PrunerConfig
-    prunerconfig = PrunerConfig(
-        structures,
-        atomnos,
+    prunerconfig = RMSDRotCorrPrunerConfig(
+        structures=structures,
+        atomnos=atomnos,
         graph=graph,
         torsions=torsions_ids,
         debugfunction=debugfunction,
         angles=angles,
         max_rmsd=max_rmsd,
         max_dev=max_dev,
-        mode="rmsd_rot_corr",
     )
 
     # run pruning
@@ -584,13 +571,11 @@ def prune_by_moment_of_inertia(
     of them is kept (i.e. max_deviation = 0.1 is 10% relative deviation).
     """
     # set up PrunerConfig dataclass
-    prunerconfig = PrunerConfig(
-        structures,
-        atomnos,
+    prunerconfig = MOIPrunerConfig(
+        structures=structures,
         debugfunction=debugfunction,
         max_dev=max_deviation,
         masses=np.array([pt[a].mass for a in atomnos]),
-        mode="moi",
     )
 
     # run pruning
