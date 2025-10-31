@@ -333,7 +333,7 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
             newly_discarded = before - after
 
             if prunerconfig.debugfunction is not None:
-                elapsed = start_t_k - perf_counter()
+                elapsed = perf_counter() - start_t_k
                 prunerconfig.debugfunction(
                     f"DEBUG: {prunerconfig.__class__.__name__} - k={k}, rejected {newly_discarded} "
                     + f"(keeping {after}/{len(out_mask)}), in {time_to_string(elapsed)}"
@@ -342,7 +342,7 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     del prunerconfig.cache
 
     if prunerconfig.debugfunction is not None:
-        elapsed = start_t - perf_counter()
+        elapsed = perf_counter() - start_t
         prunerconfig.debugfunction(
             f"DEBUG: {prunerconfig.__class__.__name__} - keeping "
             + f"{after}/{len(out_mask)} "
