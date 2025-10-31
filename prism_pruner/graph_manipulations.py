@@ -8,24 +8,24 @@ from scipy.spatial.distance import cdist
 
 from prism_pruner.algebra import dihedral, norm_of
 from prism_pruner.pt import pt
-from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float
+from prism_pruner.typing import Array1D_bool, Array1D_str, Array2D_float
 
 
 @lru_cache()
-def d_min_bond(a1: int, a2: int, factor: float = 1.2) -> float:
+def d_min_bond(a1: str, a2: str, factor: float = 1.2) -> float:
     """Return the bond distance between two atoms."""
     return factor * (pt[a1].covalent_radius + pt[a2].covalent_radius)  # type: ignore [no-any-return]
 
 
 def graphize(
-    atoms: Array1D_int,
+    atoms: Array1D_str,
     coords: Array2D_float,
     mask: Array1D_bool | None = None,
 ) -> Graph:
     """
     Return a NetworkX undirected graph of molecular connectivity.
 
-    :param atoms: atomic numbers
+    :param atoms: atomic symbols
     :param coords: atomic coordinates as 3D vectors
     :param mask: bool array, with False for atoms to be excluded in the bond evaluation
     :return: connectivity graph
@@ -47,7 +47,7 @@ def graphize(
                 matrix[i][j] = 1
 
     graph = from_numpy_array(matrix)
-    set_node_attributes(graph, dict(enumerate(atoms)), "atomnos")
+    set_node_attributes(graph, dict(enumerate(atoms)), "atoms")
 
     return graph
 
@@ -63,19 +63,20 @@ def get_sp_n(index: int, graph: Graph) -> int | None:
     - sp³ is tetraedral
     This is mainly used to understand if a torsion is to be rotated or not.
     """
-    element = graph.nodes[index]["atomnos"]
+    atom = graph.nodes[index]["atoms"]
 
-    if element not in {6, 7, 8, 15, 16}:
+    if atom not in {"C", "N", "O", "P", "S"}:
         return None
 
-    d: dict[int, dict[int, int | None]] = {
-        6: {2: 1, 3: 2, 4: 3},  # C - 2 neighbors means sp, 3 nb means sp2, 4 nb sp3
-        7: {2: 2, 3: None, 4: 3},  # N - 2 neighbors means sp2, 3 nb could mean sp3 or sp2, 4 nb sp3
-        8: {1: 2, 2: 3, 3: 3, 4: 3},  # O
-        15: {2: 2, 3: 3, 4: 3},  # P - like N
-        16: {2: 2, 3: 3, 4: 3},  # S
+    # Relationship of number of neighbors to sp^n hybridization
+    d: dict[str, dict[int, int | None]] = {
+        "C": {2: 1, 3: 2, 4: 3},
+        "N": {2: 2, 3: None, 4: 3},  # 3 could mean sp3 or sp2
+        "O": {1: 2, 2: 3, 3: 3, 4: 3},
+        "P": {2: 2, 3: 3, 4: 3},
+        "S": {2: 2, 3: 3, 4: 3},
     }
-    return d[element].get(len(set(graph.neighbors(index))))
+    return d[atom].get(len(set(graph.neighbors(index))))
 
 
 def is_amide_n(index: int, graph: Graph, mode: int = -1) -> bool:
@@ -91,23 +92,23 @@ def is_amide_n(index: int, graph: Graph, mode: int = -1) -> bool:
     2 - tertiary amide (CONR2)
     """
     # Must be a nitrogen atom
-    if graph.nodes[index]["atomnos"] == 7:
+    if graph.nodes[index]["atoms"] == "N":
         nb = set(graph.neighbors(index))
-        nb_atoms = [graph.nodes[j]["atomnos"] for j in nb]
+        nb_atoms = [graph.nodes[j]["atoms"] for j in nb]
 
         if mode != -1:
             # Primary amides need to have 1H, secondary amides none
-            if nb_atoms.count(1) != (2, 1, 0)[mode]:
+            if nb_atoms.count("H") != (2, 1, 0)[mode]:
                 return False
 
         for n in nb:
             # There must be at least one carbon atom next to N
-            if graph.nodes[n]["atomnos"] == 6:
+            if graph.nodes[n]["atoms"] == "C":
                 nb_nb = set(graph.neighbors(n))
                 # Bonded to three atoms
                 if len(nb_nb) == 3:
                     # and at least one of them has to be an oxygen
-                    if 8 in {graph.nodes[i]["atomnos"] for i in nb_nb}:
+                    if "O" in {graph.nodes[i]["atoms"] for i in nb_nb}:
                         return True
     return False
 
@@ -118,16 +119,16 @@ def is_ester_o(index: int, graph: Graph) -> bool:
 
     Note: carbamates and carbonates return True, carboxylic acids return False.
     """
-    if graph.nodes[index]["atomnos"] == 8:
-        if 1 in (nb := set(graph.neighbors(index))):
+    if graph.nodes[index]["atoms"] == "O":
+        if "H" in (nb := set(graph.neighbors(index))):
             return False
 
         for n in nb:
-            if graph.nodes[n]["atomnos"] == 6:
+            if graph.nodes[n]["atoms"] == "C":
                 nb_nb = set(graph.neighbors(n))
                 if len(nb_nb) == 3:
-                    nb_nb_sym = [graph.nodes[i]["atomnos"] for i in nb_nb]
-                    if nb_nb_sym.count(8) > 1:
+                    nb_nb_sym = [graph.nodes[i]["atoms"] for i in nb_nb]
+                    if nb_nb_sym.count("O") > 1:
                         return True
     return False
 
@@ -156,7 +157,7 @@ def get_phenyl_ids(index: int, graph: Graph) -> list[int] | None:
     """If index is part of a phenyl, return the six heavy atoms ids associated with the ring."""
     for n in graph.neighbors(index):
         for path in all_simple_paths(graph, source=index, target=n, cutoff=6):
-            if len(path) != 6 or any(graph.nodes[n]["atomnos"] == 1 for n in path):
+            if len(path) != 6 or any(graph.nodes[n]["atoms"] == "H" for n in path):
                 continue
             if all(len(set(graph.neighbors(i))) == 3 for i in path):
                 return path  # type: ignore [no-any-return]

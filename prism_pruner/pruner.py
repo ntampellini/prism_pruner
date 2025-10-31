@@ -22,7 +22,7 @@ from prism_pruner.torsion_module import (
 from prism_pruner.typing import (
     Array1D_bool,
     Array1D_float,
-    Array1D_int,
+    Array1D_str,
     Array2D_float,
     Array2D_int,
     Array3D_float,
@@ -71,7 +71,7 @@ class PrunerConfig:
 class RMSDRotCorrPrunerConfig(PrunerConfig):
     """Configuration dataclass for Pruner."""
 
-    atomnos: Array1D_int = field(kw_only=True)
+    atoms: Array1D_str = field(kw_only=True)
     max_rmsd: float = field(kw_only=True)
     max_dev: float = field(kw_only=True)
     angles: Sequence[Sequence[int]] = field(kw_only=True)
@@ -84,7 +84,7 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
         rmsd, max_dev = rotationally_corrected_rmsd_and_max(
             coord1,
             coord2,
-            atomnos=self.atomnos,
+            atoms=self.atoms,
             torsions=self.torsions,
             graph=self.graph,
             angles=self.angles,
@@ -105,7 +105,7 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
 class RMSDPrunerConfig(PrunerConfig):
     """Configuration dataclass for Pruner."""
 
-    atomnos: Array1D_int = field(kw_only=True)
+    atoms: Array1D_str = field(kw_only=True)
     max_rmsd: float = field(kw_only=True)
     max_dev: float = field(kw_only=True)
     heavy_atoms_only: bool = True
@@ -113,7 +113,7 @@ class RMSDPrunerConfig(PrunerConfig):
     def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
         """Return if the structures are similar."""
         if self.heavy_atoms_only:
-            mask = self.atomnos != 1
+            mask = self.atoms != "H"
         else:
             mask = np.ones(self.structures[0].shape[0], dtype=bool)
 
@@ -361,7 +361,7 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
 
 def prune_by_rmsd(
     structures: Array3D_float,
-    atomnos: Array1D_int,
+    atoms: Array1D_str,
     max_rmsd: float = 0.25,
     max_dev: float | None = None,
     debugfunction: Callable[[str], None] | None = None,
@@ -381,7 +381,7 @@ def prune_by_rmsd(
     # set up PrunerConfig dataclass
     prunerconfig = RMSDPrunerConfig(
         structures=structures,
-        atomnos=atomnos,
+        atoms=atoms,
         max_rmsd=max_rmsd,
         max_dev=max_dev,
         debugfunction=debugfunction,
@@ -393,7 +393,7 @@ def prune_by_rmsd(
 
 def prune_by_rmsd_rot_corr(
     structures: Array3D_float,
-    atomnos: Array1D_int,
+    atoms: Array1D_str,
     graph: Graph,
     max_rmsd: float = 0.25,
     max_dev: float | None = None,
@@ -444,7 +444,7 @@ def prune_by_rmsd_rot_corr(
     max_dev = max_dev or 2 * max_rmsd
 
     # add hydrogen bonds to molecular graph
-    hydrogen_bonds = get_hydrogen_bonds(ref, atomnos, graph)
+    hydrogen_bonds = get_hydrogen_bonds(ref, atoms, graph)
     for hb in hydrogen_bonds:
         graph.add_edge(*hb)
 
@@ -455,7 +455,7 @@ def prune_by_rmsd_rot_corr(
     torsions = get_torsions(
         graph,
         hydrogen_bonds=hydrogen_bonds,
-        double_bonds=get_double_bonds_indices(ref, atomnos),
+        double_bonds=get_double_bonds_indices(ref, atoms),
         keepdummy=True,
         mode="symmetry",
     )
@@ -473,7 +473,7 @@ def prune_by_rmsd_rot_corr(
     torsions = [
         t
         for t in torsions
-        if (1 not in [atomnos[i] for i in t.torsion])
+        if ("H" not in [atoms[i] for i in t.torsion])
         or (t.torsion[0] in flat_hbs or t.torsion[3] in flat_hbs)
     ]
 
@@ -510,10 +510,10 @@ def prune_by_rmsd_rot_corr(
                 " {:2s} - {:21s} : {}{}{}{} : {}-fold".format(
                     str(i + 1),
                     str(torsion),
-                    pt[atomnos[torsion[0]]].symbol,
-                    pt[atomnos[torsion[1]]].symbol,
-                    pt[atomnos[torsion[2]]].symbol,
-                    pt[atomnos[torsion[3]]].symbol,
+                    atoms[torsion[0]],
+                    atoms[torsion[1]],
+                    atoms[torsion[2]],
+                    atoms[torsion[3]],
                     len(angle),
                 )
             )
@@ -522,7 +522,7 @@ def prune_by_rmsd_rot_corr(
     # Initialize PrunerConfig
     prunerconfig = RMSDRotCorrPrunerConfig(
         structures=structures,
-        atomnos=atomnos,
+        atoms=atoms,
         graph=graph,
         torsions=torsions_ids,
         debugfunction=debugfunction,
@@ -543,7 +543,7 @@ def prune_by_rmsd_rot_corr(
 
 def prune_by_moment_of_inertia(
     structures: Array3D_float,
-    atomnos: Array1D_int,
+    atoms: Array1D_str,
     max_deviation: float = 1e-2,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
@@ -560,7 +560,7 @@ def prune_by_moment_of_inertia(
         structures=structures,
         debugfunction=debugfunction,
         max_dev=max_deviation,
-        masses=np.array([pt[a].mass for a in atomnos]),
+        masses=np.array([pt[a].mass for a in atoms]),
     )
 
     return prune(prunerconfig)

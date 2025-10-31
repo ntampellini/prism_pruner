@@ -23,7 +23,7 @@ from prism_pruner.graph_manipulations import (
     is_ester_o,
 )
 from prism_pruner.rmsd import rmsd_and_max
-from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2D_int
+from prism_pruner.typing import Array1D_bool, Array1D_str, Array2D_float, Array2D_int
 from prism_pruner.utils import rotate_dihedral
 
 
@@ -79,16 +79,16 @@ def is_rotable(
 
 def get_n_fold(torsion: Torsion, graph: Graph) -> int:
     """Return the n-fold of the rotation."""
-    nums = (graph.nodes[torsion.i2]["atomnos"], graph.nodes[torsion.i3]["atomnos"])
+    atoms = (graph.nodes[torsion.i2]["atoms"], graph.nodes[torsion.i3]["atoms"])
 
-    if 1 in nums:
+    if "H" in atoms:
         return 6  # H-N, H-O hydrogen bonds
 
     if is_amide_n(torsion.i2, graph, mode=2) or (is_amide_n(torsion.i3, graph, mode=2)):
         # tertiary amides rotations are 2-fold
         return 2
 
-    if (6 in nums) or (7 in nums) or (16 in nums):  # if C, N or S atoms
+    if ("C" in atoms) or ("N" in atoms) or ("S" in atoms):  # if C, N or S atoms
         sp_n_i2 = get_sp_n(torsion.i2, graph)
         sp_n_i3 = get_sp_n(torsion.i3, graph)
 
@@ -133,9 +133,9 @@ def _is_free(index: int, graph: Graph) -> bool:
     """
     if all(
         (
-            graph.nodes[index]["atomnos"] == 6,
+            graph.nodes[index]["atoms"] == "C",
             2 == get_sp_n(index, graph),
-            8 in (graph.nodes[n]["atomnos"] for n in graph.neighbors(index)),
+            "O" in (graph.nodes[n]["atoms"] for n in graph.neighbors(index)),
         )
     ):
         return False
@@ -158,7 +158,7 @@ def is_nondummy(i: int, root: int, graph: Graph) -> bool:
     to root, has different substituents. i.e. methyl, CF3 and tBu
     rotations should return False.
     """
-    if graph.nodes[i]["atomnos"] not in (6, 7):
+    if graph.nodes[i]["atoms"] not in ("C", "N"):
         return True
     # for now, we only discard rotations around carbon
     # and nitrogen atoms, like methyl/tert-butyl/triphenyl
@@ -197,7 +197,7 @@ def is_nondummy(i: int, root: int, graph: Graph) -> bool:
                 return not is_isomorphic(
                     subgraphs[0],
                     subgraphs[1],
-                    node_match=lambda n1, n2: n1["atomnos"] == n2["atomnos"],
+                    node_match=lambda n1, n2: n1["atoms"] == n2["atoms"],
                 )
 
             # We should not end up here, but if we do, rotation should not be dummy
@@ -222,7 +222,7 @@ def is_nondummy(i: int, root: int, graph: Graph) -> bool:
     subgraphs = [subgraph(G, s) for s in subgraphs_nodes]
     for sub in subgraphs[1:]:
         if not is_isomorphic(
-            subgraphs[0], sub, node_match=lambda n1, n2: n1["atomnos"] == n2["atomnos"]
+            subgraphs[0], sub, node_match=lambda n1, n2: n1["atoms"] == n2["atoms"]
         ):
             return True
     # Care should be taken because chiral centers are not taken into account: a rotation
@@ -236,12 +236,12 @@ def is_nondummy(i: int, root: int, graph: Graph) -> bool:
 
 def get_hydrogen_bonds(
     coords: Array2D_float,
-    atomnos: Array1D_int,
+    atoms: Array1D_str,
     graph: Graph,
     d_min: float = 2.5,
     d_max: float = 3.3,
     max_angle: int = 45,
-    elements: Sequence[Sequence[int]] | None = None,
+    elements: Sequence[Sequence[str]] | None = None,
     fragments: Sequence[Sequence[int]] | None = None,
 ) -> list[list[int]]:
     """Return a list of tuples with the indices of hydrogen bonding partners.
@@ -251,8 +251,8 @@ def get_hydrogen_bonds(
     - with an Y-X distance between d_min and d_max (i.e. N-O, Angstroms)
     - with an Y-H-X angle below max_angle (i.e. N-H-O, degrees)
 
-    elements: iterable of two iterables with donor atomic numbers in the first
-    element and acceptors in the second. default: ((7, 8), (7, 8))
+    elements: iterable of two iterables with donor atomic symbols in the first
+    element and acceptors in the second. default: (("N", "O"), ("N", "O"))
 
     If fragments is specified (iterable of iterable of indices for each fragment)
     the function only returns inter-fragment hydrogen bonds.
@@ -261,10 +261,10 @@ def get_hydrogen_bonds(
     # initializing output list
 
     if elements is None:
-        elements = ((7, 8), (7, 8, 9))
+        elements = (("N", "O"), ("N", "O", "F"))
 
-    het_idx_from = np.array([i for i, a in enumerate(atomnos) if a in elements[0]], dtype=int)
-    het_idx_to = np.array([i for i, a in enumerate(atomnos) if a in elements[1]], dtype=int)
+    het_idx_from = np.array([i for i, a in enumerate(atoms) if a in elements[0]], dtype=int)
+    het_idx_to = np.array([i for i, a in enumerate(atoms) if a in elements[1]], dtype=int)
     # indices where N or O (or user-specified elements) atoms are present.
 
     for i1 in het_idx_from:
@@ -277,7 +277,7 @@ def get_hydrogen_bonds(
             # keep close pairs
             if d_min < norm_of(coords[i1] - coords[i2]) < d_max:
                 # getting the indices of all H atoms attached to them
-                Hs = [i for i in graph.neighbors(i1) if graph.nodes[i]["atomnos"] == 1]
+                Hs = [i for i in graph.neighbors(i1) if graph.nodes[i]["atoms"] == "H"]
 
                 # versor connectring the two Heteroatoms
                 versor = norm(coords[i2] - coords[i1])
@@ -400,7 +400,7 @@ def get_torsions(
 def rotationally_corrected_rmsd_and_max(
     ref: Array2D_float,
     coord: Array2D_float,
-    atomnos: Array1D_int,
+    atoms: Array1D_str,
     torsions: Array2D_int,
     graph: Graph,
     angles: Sequence[Sequence[int]],
@@ -441,7 +441,8 @@ def rotationally_corrected_rmsd_and_max(
             )
 
         if debugfunction is not None:
-            global_rmsd = rmsd_and_max(ref[(atomnos != 1)], coord[(atomnos != 1)])[0]
+            heavy_mask = np.array([a != "H" for a in atoms])
+            global_rmsd = rmsd_and_max(ref[heavy_mask], coord[heavy_mask])[0]
             debugfunction(
                 f"Torsion {i + 1} - {torsion}: best corr = {torsion_corrections[i]}°, 4-atom RMSD: "
                 + f"{best_rmsd:.3f} A, global RMSD: {global_rmsd:.3f}"
@@ -449,7 +450,9 @@ def rotationally_corrected_rmsd_and_max(
 
     # we should have the optimal orientation on all torsions now:
     # calculate the RMSD
-    mask = (atomnos != 1) if heavy_atoms_only else np.ones(atomnos.shape, dtype=bool)
+    mask = (
+        np.array([a != "H" for a in atoms]) if heavy_atoms_only else np.ones(len(atoms), dtype=bool)
+    )
     rmsd, maxdev = rmsd_and_max(ref[mask], coord[mask])
 
     # since we could have segmented graphs, and therefore potentially only rotate

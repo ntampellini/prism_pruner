@@ -19,15 +19,15 @@ def test_two_identical() -> None:
     """Test that two identical structures evaluate as similar under all metrics."""
     ensemble = ConformerEnsemble.from_xyz(HERE / "P4_folded.xyz")
     coords = np.stack((ensemble.coords[0], ensemble.coords[0]))
-    graph = graphize(ensemble.atomnos, ensemble.coords[0])
+    graph = graphize(ensemble.atoms, ensemble.coords[0])
 
-    pruned, _ = prune_by_rmsd(coords, ensemble.atomnos)
+    pruned, _ = prune_by_rmsd(coords, ensemble.atoms)
     assert len(pruned) == 1
 
-    pruned, _ = prune_by_rmsd_rot_corr(coords, ensemble.atomnos, graph)
+    pruned, _ = prune_by_rmsd_rot_corr(coords, ensemble.atoms, graph)
     assert len(pruned) == 1
 
-    pruned, _ = prune_by_moment_of_inertia(coords, ensemble.atomnos)
+    pruned, _ = prune_by_moment_of_inertia(coords, ensemble.atoms)
     assert len(pruned) == 1
 
 
@@ -36,16 +36,16 @@ def test_two_different() -> None:
     ensemble1 = ConformerEnsemble.from_xyz(HERE / "P4_folded.xyz")
     ensemble2 = ConformerEnsemble.from_xyz(HERE / "P4_hairpin.xyz")
 
-    graph1 = graphize(ensemble1.atomnos, ensemble1.coords[0])
+    graph1 = graphize(ensemble1.atoms, ensemble1.coords[0])
     coords = np.stack((ensemble1.coords[0], ensemble2.coords[0]))
 
-    pruned, _ = prune_by_rmsd(coords, ensemble1.atomnos)
+    pruned, _ = prune_by_rmsd(coords, ensemble1.atoms)
     assert len(pruned) == 2
 
-    pruned, _ = prune_by_rmsd_rot_corr(coords, ensemble1.atomnos, graph1)
+    pruned, _ = prune_by_rmsd_rot_corr(coords, ensemble1.atoms, graph1)
     assert len(pruned) == 2
 
-    pruned, _ = prune_by_moment_of_inertia(coords, ensemble1.atomnos)
+    pruned, _ = prune_by_moment_of_inertia(coords, ensemble1.atoms)
     assert len(pruned) == 2
 
 
@@ -55,7 +55,7 @@ def test_ensemble_moi() -> None:
 
     pruned, _ = prune_by_moment_of_inertia(
         ensemble.coords,
-        ensemble.atomnos,
+        ensemble.atoms,
     )
 
     assert pruned.shape[0] < ensemble.coords.shape[0]
@@ -67,7 +67,7 @@ def test_ensemble_rmsd() -> None:
 
     pruned, _ = prune_by_rmsd(
         ensemble.coords,
-        ensemble.atomnos,
+        ensemble.atoms,
         max_rmsd=1.0,
     )
 
@@ -78,11 +78,11 @@ def test_ensemble_rmsd_rot_corr() -> None:
     """Assert that an ensemble of structures is reduced in size after rot. corr. RMSD pruning."""
     ensemble = ConformerEnsemble.from_xyz(HERE / "ensemble_100.xyz")
 
-    graph = graphize(ensemble.atomnos, ensemble.coords[0])
+    graph = graphize(ensemble.atoms, ensemble.coords[0])
 
     pruned, _ = prune_by_rmsd_rot_corr(
         ensemble.coords,
-        ensemble.atomnos,
+        ensemble.atoms,
         graph,
         max_rmsd=1.0,
     )
@@ -100,11 +100,11 @@ def test_rmsd_rot_corr_segmented_graph_2_mols() -> None:
     """
     ensemble = ConformerEnsemble.from_xyz(HERE / "MTBE_tBuOH_ens.xyz")
 
-    graph = graphize(ensemble.atomnos, ensemble.coords[0])
+    graph = graphize(ensemble.atoms, ensemble.coords[0])
 
     pruned, _ = prune_by_rmsd_rot_corr(
         ensemble.coords,
-        ensemble.atomnos,
+        ensemble.atoms,
         graph,
         max_rmsd=0.1,
     )
