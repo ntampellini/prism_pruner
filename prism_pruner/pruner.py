@@ -29,8 +29,6 @@ from prism_pruner.typing import (
 )
 from prism_pruner.utils import flatten, get_double_bonds_indices, time_to_string
 
-__version__ = "1.0.0"
-
 
 @dataclass
 class PrunerConfig:
