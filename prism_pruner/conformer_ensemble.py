@@ -6,8 +6,7 @@ from typing import Self
 
 import numpy as np
 
-from prism_pruner.pt import pt
-from prism_pruner.typing import Array1D_int, Array1D_str, Array2D_float, Array3D_float
+from prism_pruner.typing import Array1D_str, Array2D_float, Array3D_float
 
 
 @dataclass
@@ -48,8 +47,3 @@ class ConformerEnsemble:
 
         with Path(file).open("w") as f:
             f.write("\n".join(map(to_xyz, self.coords)))
-
-    @property
-    def atomnos(self) -> Array1D_int:
-        """Get atomic numbers of the atoms in the ensemble."""
-        return np.array([getattr(pt, atom).number for atom in self.atoms])

@@ -4,17 +4,17 @@ from functools import lru_cache
 
 import numpy as np
 from networkx import Graph, all_simple_paths, from_numpy_array, set_node_attributes
+from periodictable import elements
 from scipy.spatial.distance import cdist
 
 from prism_pruner.algebra import dihedral, norm_of
-from prism_pruner.pt import pt
 from prism_pruner.typing import Array1D_bool, Array1D_str, Array2D_float
 
 
 @lru_cache()
 def d_min_bond(a1: str, a2: str, factor: float = 1.2) -> float:
     """Return the bond distance between two atoms."""
-    return factor * (pt[a1].covalent_radius + pt[a2].covalent_radius)  # type: ignore [no-any-return]
+    return factor * (elements.symbol(a1).covalent_radius + elements.symbol(a2).covalent_radius)  # type: ignore [no-any-return]
 
 
 def graphize(

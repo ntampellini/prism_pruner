@@ -7,10 +7,10 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 from networkx import Graph, connected_components
+from periodictable import elements
 from scipy.spatial.distance import cdist
 
 from prism_pruner.algebra import get_moi_deviation_vec
-from prism_pruner.pt import pt
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
     get_angles,
@@ -560,7 +560,7 @@ def prune_by_moment_of_inertia(
         structures=structures,
         debugfunction=debugfunction,
         max_dev=max_deviation,
-        masses=np.array([pt[a].mass for a in atoms]),
+        masses=np.array([elements.symbol(a).mass for a in atoms]),
     )
 
     return prune(prunerconfig)
