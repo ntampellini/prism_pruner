@@ -69,7 +69,7 @@ class PrunerConfig:
         raise NotImplementedError
 
 
-T = TypeVar("T", bound=PrunerConfig)
+PrunerConfigType = TypeVar("PrunerConfigType", bound=PrunerConfig)
 
 
 @dataclass
@@ -156,7 +156,7 @@ class MOIPrunerConfig(PrunerConfig):
 
 
 def _main_compute_subrow(
-    prunerconfig: T,
+    prunerconfig: PrunerConfigType,
     ref: Array2D_float,
     structures: Array3D_float,
     in_mask: Array1D_bool,
@@ -203,7 +203,7 @@ def _main_compute_subrow(
 
 
 def _main_compute_row(
-    prunerconfig: T,
+    prunerconfig: PrunerConfigType,
     structures: Array3D_float,
     in_mask: Array1D_bool,
     first_abs_index: int,
@@ -240,7 +240,7 @@ def _main_compute_row(
 
 
 def _main_compute_group(
-    prunerconfig: T,
+    prunerconfig: PrunerConfigType,
     structures: Array2D_float,
     in_mask: Array1D_bool,
     k: int,
@@ -277,7 +277,7 @@ def _main_compute_group(
     return out_mask
 
 
-def prune(prunerconfig: T) -> T:
+def prune(prunerconfig: PrunerConfigType) -> tuple[Array2D_float, Array1D_bool]:
     """Perform the similarity pruning.
 
     Remove similar structures by repeatedly grouping them into k
@@ -340,22 +340,28 @@ def prune(prunerconfig: T) -> T:
             if prunerconfig.debugfunction is not None:
                 elapsed = start_t_k - perf_counter()
                 prunerconfig.debugfunction(
-                    # NOTE: add type of pruner to debug
-                    f"DEBUG: Pruner - k={k}, rejected {newly_discarded} "
+                    f"DEBUG: {prunerconfig.__class__.__name__} - k={k}, rejected {newly_discarded} "
                     + f"(keeping {after}/{len(out_mask)}), in {time_to_string(elapsed)}"
                 )
 
     del prunerconfig.cache
-    prunerconfig.mask = out_mask
-    prunerconfig.structures = prunerconfig.structures[prunerconfig.mask]
 
     if prunerconfig.debugfunction is not None:
         elapsed = start_t - perf_counter()
         prunerconfig.debugfunction(
-            "DEBUG: Pruner - keeping " + f"{after}/{len(out_mask)} ({time_to_string(elapsed)})"
+            f"DEBUG: {prunerconfig.__class__.__name__} - keeping "
+            + f"{after}/{len(out_mask)} "
+            + f"({time_to_string(elapsed)})"
         )
 
-    return prunerconfig
+        fraction = 0 if prunerconfig.calls == 0 else prunerconfig.cache_calls / prunerconfig.calls
+        prunerconfig.debugfunction(
+            f"DEBUG: {prunerconfig.__class__.__name__} - Used cached data "
+            + f"{prunerconfig.cache_calls}/{prunerconfig.calls} times, "
+            + f"{100 * fraction:.2f}% of total calls"
+        )
+
+    return prunerconfig.structures[out_mask], out_mask
 
 
 def prune_by_rmsd(
@@ -387,16 +393,7 @@ def prune_by_rmsd(
     )
 
     # run the pruning
-    prunerconfig = prune(prunerconfig)
-
-    if debugfunction is not None:
-        fraction = 0 if prunerconfig.calls == 0 else prunerconfig.cache_calls / prunerconfig.calls
-        debugfunction(
-            f"DEBUG: prune_by_rmsd - Used cached data {prunerconfig.cache_calls}/"
-            + f"{prunerconfig.calls} times, {100 * fraction:.2f}% of total calls"
-        )
-
-    return structures[prunerconfig.mask], prunerconfig.mask
+    return prune(prunerconfig)
 
 
 def prune_by_rmsd_rot_corr(
@@ -540,20 +537,13 @@ def prune_by_rmsd_rot_corr(
     )
 
     # run pruning
-    prunerconfig = prune(prunerconfig)
+    structures_out, mask = prune(prunerconfig)
 
     # remove the extra bond in the molecular graph
     if len(subgraphs) == 2:
         graph.remove_edge(i1, i2)
 
-    if debugfunction is not None:
-        fraction = 0 if prunerconfig.calls == 0 else prunerconfig.cache_calls / prunerconfig.calls
-        debugfunction(
-            f"DEBUG: prune_by_rmsd_rot_corr - Used cached data {prunerconfig.cache_calls}/"
-            + f"{prunerconfig.calls} times, {100 * fraction:.2f}% of total calls"
-        )
-
-    return structures[prunerconfig.mask], prunerconfig.mask
+    return structures_out, mask
 
 
 def prune_by_moment_of_inertia(
@@ -578,14 +568,4 @@ def prune_by_moment_of_inertia(
         masses=np.array([pt[a].mass for a in atomnos]),
     )
 
-    # run pruning
-    prunerconfig = prune(prunerconfig)
-
-    if debugfunction is not None:
-        fraction = 0 if prunerconfig.calls == 0 else prunerconfig.cache_calls / prunerconfig.calls
-        debugfunction(
-            f"DEBUG: prune_by_moment_of_inertia - Used cached data {prunerconfig.cache_calls}/"
-            + f"{prunerconfig.calls} times, {100 * fraction:.2f}% of total calls"
-        )
-
-    return structures[prunerconfig.mask], prunerconfig.mask
+    return prune(prunerconfig)
