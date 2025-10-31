@@ -1,7 +1,6 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
-from pathlib import Path
-from typing import Any, Sequence, TextIO
+from typing import Any, Sequence
 
 import numpy as np
 from numpy.linalg import LinAlgError
@@ -47,102 +46,6 @@ def align_structures(
         output[t + 1] = (matrix @ target.T).T
 
     return output
-
-
-def write_xyz(
-    coords: Array2D_float, atomnos: Array1D_int, output: TextIO, title: str = "temp"
-) -> None:
-    """Write xyz coordinates to a TextIO file."""
-    assert atomnos.shape[0] == coords.shape[0]
-    assert coords.shape[1] == 3
-    string = ""
-    string += str(len(coords))
-    string += f"\n{title}\n"
-    for i, atom in enumerate(coords):
-        string += "%s     % .6f % .6f % .6f\n" % (pt[atomnos[i]].symbol, atom[0], atom[1], atom[2])
-    output.write(string)
-
-
-class XYZParser:
-    """cclib-like parser for .xyz multimolecular files."""
-
-    def __init__(self, filename: str, pt: Any):
-        """Initialize XYZParser and parse the file.
-
-        Args:
-            filename (str): Path to the .xyz file
-            pt: periodictable table instance for atomic number lookup
-
-        Raises
-        ------
-            FileNotFoundError: If the specified file does not exist
-        """
-        self.filename = filename
-        self.pt = pt
-        self.atomcoords_list: list[Array3D_float] = []
-        self.atomnos_list: list[Array1D_int] = []
-
-        self._parse_file()
-
-        self.atomcoords: Array3D_float = np.asarray(self.atomcoords_list)
-
-        self.atomnos: Array1D_int = np.asarray(self.atomnos_list[0])
-
-    def _parse_file(self) -> None:
-        """Parse the .xyz file and populate atomcoords and atomnos."""
-        filepath = Path(self.filename)
-
-        if not filepath.exists():
-            raise FileNotFoundError(f"File '{self.filename}' not found")
-
-        with open(filepath, "r") as f:
-            lines = f.readlines()
-
-        i = 0
-        while i < len(lines):
-            # Skip empty lines
-            if not lines[i].strip():
-                i += 1
-                continue
-
-            # Read number of atoms
-            try:
-                natoms = int(lines[i].strip())
-            except ValueError:
-                i += 1
-                continue
-
-            # Skip comment line
-            i += 2
-
-            coords = []
-            atomnos = []
-
-            # Read atom data
-            for j in range(natoms):
-                if i + j < len(lines):
-                    parts = lines[i + j].split()
-                    if len(parts) >= 4:
-                        symbol = parts[0]
-                        x, y, z = map(float, parts[1:4])
-
-                        # Get atomic number from periodictable
-                        atomic_no = getattr(self.pt, symbol).number
-
-                        coords.append([x, y, z])
-                        atomnos.append(atomic_no)
-
-            if coords:
-                self.atomcoords_list.append(np.array(coords))
-                self.atomnos_list.append(np.array(atomnos))
-
-            i += natoms
-
-
-def read_xyz(filename: str) -> XYZParser:
-    """Read a .xyz file and return a cclib-like mol object."""
-    mol = XYZParser(filename, pt)
-    return mol
 
 
 def time_to_string(total_time: float, verbose: bool = False, digits: int = 1) -> str:
