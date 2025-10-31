@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 import numpy as np
 from networkx import (
@@ -23,7 +23,7 @@ from prism_pruner.graph_manipulations import (
     is_ester_o,
 )
 from prism_pruner.rmsd import rmsd_and_max
-from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2D_int, F
+from prism_pruner.typing import Array1D_bool, Array1D_int, Array2D_float, Array2D_int
 from prism_pruner.utils import rotate_dihedral
 
 
@@ -405,7 +405,7 @@ def rotationally_corrected_rmsd_and_max(
     graph: Graph,
     angles: Sequence[Sequence[int]],
     heavy_atoms_only: bool = True,
-    debugfunction: F | None = None,
+    debugfunction: Callable[..., object] | None = None,
     return_type: str = "rmsd",
 ) -> tuple[float, float] | Array2D_float:
     """Return RMSD and max deviation, corrected for degenerate torsions.

@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Any, Callable, Sequence, TypeVar
+from typing import Any, Callable, Sequence
 
 import numpy as np
 from networkx import Graph, connected_components
@@ -67,9 +67,6 @@ class PrunerConfig:
     def evaluate_sim(self, *args: Any, **kwargs: Any) -> bool:
         """Stub method - override in subclasses as needed."""
         raise NotImplementedError
-
-
-PrunerConfigType = TypeVar("PrunerConfigType", bound=PrunerConfig)
 
 
 @dataclass
@@ -156,7 +153,7 @@ class MOIPrunerConfig(PrunerConfig):
 
 
 def _main_compute_subrow(
-    prunerconfig: PrunerConfigType,
+    prunerconfig: PrunerConfig,
     ref: Array2D_float,
     structures: Array3D_float,
     in_mask: Array1D_bool,
@@ -203,7 +200,7 @@ def _main_compute_subrow(
 
 
 def _main_compute_row(
-    prunerconfig: PrunerConfigType,
+    prunerconfig: PrunerConfig,
     structures: Array3D_float,
     in_mask: Array1D_bool,
     first_abs_index: int,
@@ -240,7 +237,7 @@ def _main_compute_row(
 
 
 def _main_compute_group(
-    prunerconfig: PrunerConfigType,
+    prunerconfig: PrunerConfig,
     structures: Array2D_float,
     in_mask: Array1D_bool,
     k: int,
@@ -277,7 +274,7 @@ def _main_compute_group(
     return out_mask
 
 
-def prune(prunerconfig: PrunerConfigType) -> tuple[Array2D_float, Array1D_bool]:
+def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     """Perform the similarity pruning.
 
     Remove similar structures by repeatedly grouping them into k

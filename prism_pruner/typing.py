@@ -1,6 +1,6 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
-from typing import Annotated, Any, Callable, TypeVar, Union
+from typing import Annotated, Any, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -12,5 +12,4 @@ Array1D_float = Annotated[NDArray[np.float64], "shape: (energy,)"]
 Array1D_int = Annotated[NDArray[np.int32], "shape: (natoms,)"]
 Array1D_str = Annotated[NDArray[np.int32], "shape: (natoms,)"]
 Array1D_bool = Annotated[NDArray[np.bool_], "shape: (n,)"]
-F = TypeVar("F", bound=Callable[..., object])
 FloatIterable = Union[tuple[float, ...], NDArray[np.floating[Any]]]
