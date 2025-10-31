@@ -69,8 +69,8 @@ ignore = [
     "PLR0914", # Too many locals
     "PLR0915", # Too many statements
     "PLR1702", # Too many nested-blocks
-
-    "PLR2004", # allow-magic-value-types
+    "PLR2004", # Magic value comparison
+    "PT013", # Incorrect import of `pytest`
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -100,3 +100,6 @@ ignore_missing_imports = true
 testpaths = ["tests", "prism_pruner"]
 addopts = "--doctest-modules"
 doctest_optionflags = "NORMALIZE_WHITESPACE"
+markers = [
+  "timing: tests used to generate timings",
+]
