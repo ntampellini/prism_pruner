@@ -5,6 +5,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ntampellini/prism_pruner/test.yml?branch=master&logo=github-actions)](https://github.com/ntampellini/prism_pruner/actions/)
 [![Codecov](https://img.shields.io/codecov/c/github/ntampellini/prism_pruner)](https://codecov.io/gh/ntampellini/prism_pruner)
+![PyPI - Version](https://img.shields.io/pypi/v/prism_pruner)
 
 PRISM (PRuning Interface for Similar Molecules) is the modular similarity pruning code from [FIRECODE](https://github.com/ntampellini/FIRECODE/tree/main), in a standalone package. It filters out duplicate structures from conformational ensembles, leaving behind non-redundant states.
 
