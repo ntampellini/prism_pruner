@@ -115,9 +115,11 @@ def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Arra
     return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
-def kronecker_delta(i: int, j: int) -> int:
-    """Kronecker delta."""
-    return int(i == j)
+def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
+    """Find the center of mass for the atomic system."""
+    total_mass = np.sum(masses)
+    w = np.sum(coords * masses[:, np.newaxis], axis=0)
+    return w / total_mass  # type: ignore[no-any-return]
 
 
 def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
@@ -128,19 +130,25 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     a shape (3,) array with the moments of inertia along the main axes.
     (I_x, I_y and largest I_z last)
     """
-    coords -= center_of_mass(coords, masses)
-    norms_of_coords = np.linalg.norm(coords, axis=1, keepdims=True)
-    inertia_moment_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    coords = coords - center_of_mass(coords, masses)
+
+    # Compute r^2 for each atom (shape: (n,))
+    norms_squared = np.sum(coords**2, axis=1)
+
+    # Build inertia tensor using vectorized operations
+    # I_ij = sum_n m_n (r^2 * delta_ij - r_i * r_j)
+    inertia_moment_matrix = np.zeros((3, 3))
 
     for i in range(3):
         for j in range(3):
-            k = kronecker_delta(i, j)
-            inertia_moment_matrix[i][j] = np.sum(
-                [
-                    masses[n] * ((norms_of_coords[n] ** 2) * k - coords[n][i] * coords[n][j])
-                    for n, _ in enumerate(coords)
-                ]
-            )
+            if i == j:
+                # Diagonal: sum of m_n * r^2 - m_n * r_i^2
+                inertia_moment_matrix[i, j] = np.sum(
+                    masses * norms_squared - masses * coords[:, i] ** 2
+                )
+            else:
+                # Off-diagonal: sum of -m_n * r_i * r_j
+                inertia_moment_matrix[i, j] = -np.sum(masses * coords[:, i] * coords[:, j])
 
     inertia_moment_matrix = diagonalize(inertia_moment_matrix)
 
@@ -152,15 +160,6 @@ def diagonalize(a: Array2D_float) -> Array2D_float:
     eigenvalues_of_a, eigenvectors_of_a = np.linalg.eig(a)
     b = eigenvectors_of_a[:, np.abs(eigenvalues_of_a).argsort()]
     return np.dot(np.linalg.inv(b), np.dot(a, b))  # type: ignore[no-any-return]
-
-
-def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
-    """Find the center of mass for the atomic system."""
-    total_mass = sum([masses[i] for i in range(len(coords))])
-    w = np.array([0.0, 0.0, 0.0])
-    for i in range(len(coords)):
-        w += coords[i] * masses[i]
-    return w / total_mass  # type: ignore[no-any-return]
 
 
 def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
