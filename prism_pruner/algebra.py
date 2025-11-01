@@ -129,7 +129,7 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     (I_x, I_y and largest I_z last)
     """
     coords -= center_of_mass(coords, masses)
-    norms_of_coords = np.sqrt((coords**2).sum(-1))[..., np.newaxis]
+    norms_of_coords = np.linalg.norm(coords, axis=1, keepdims=True)
     inertia_moment_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
     for i in range(3):
