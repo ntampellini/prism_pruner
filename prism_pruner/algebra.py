@@ -1,28 +1,28 @@
 """Algebra utilities."""
 
-from typing import Sequence
+from typing import Sequence, cast
 
 import numpy as np
 
-from prism_pruner.typing import Array1D_float, Array1D_int, Array2D_float, Array3D_float
+from prism_pruner.typing import Array1D_float, Array2D_float, Array3D_float
 
 
-def norm(vec: Array1D_int) -> Array1D_int:
-    """Normalize a vector (3D only)."""
-    return vec / np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))  # type: ignore[no-any-return]
+def norm_of(vec: Array1D_float) -> float:
+    """Return the norm of the vector."""
+    return cast("float", np.linalg.norm(vec, axis=None))
 
 
-def norm_of(vec: Array1D_int) -> float:
-    """Norm of a vector (3D only)."""
-    return float(np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])))
+def normalize(vec: Array1D_float) -> Array1D_float:
+    """Normalize a vector."""
+    return vec / norm_of(vec)
 
 
-def vec_angle(v1: Array1D_int, v2: Array1D_int) -> float:
+def vec_angle(v1: Array1D_float, v2: Array1D_float) -> float:
     """Return the planar angle defined by two 3D vectors."""
     return float(
         np.degrees(
             np.arccos(
-                np.clip(np.dot(norm(v1), norm(v2)), -1.0, 1.0),
+                np.clip(np.dot(normalize(v1), normalize(v2)), -1.0, 1.0),
             )
         )
     )
@@ -60,7 +60,7 @@ def dihedral(p: Array2D_float) -> float:
     return float(np.degrees(np.arctan2(y, x)))
 
 
-def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
+def rot_mat_from_pointer(pointer: Array1D_float, angle: float) -> Array2D_float:
     """
     Get the rotation matrix from the rotation pivot using a quaternion.
 
@@ -72,7 +72,7 @@ def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
 
     angle_2 = np.radians(angle) / 2
     sin = np.sin(angle_2)
-    pointer = norm(pointer)
+    pointer = normalize(pointer)
     return quaternion_to_rotation_matrix(
         [
             sin * pointer[0],
@@ -129,14 +129,15 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     (I_x, I_y and largest I_z last)
     """
     coords -= center_of_mass(coords, masses)
+    norms_of_coords = np.sqrt((coords**2).sum(-1))[..., np.newaxis]
     inertia_moment_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
     for i in range(3):
         for j in range(3):
             k = kronecker_delta(i, j)
-            inertia_moment_matrix[i][j] = sum(
+            inertia_moment_matrix[i][j] = np.sum(
                 [
-                    masses[n] * ((norm_of(coords[n]) ** 2) * k - coords[n][i] * coords[n][j])
+                    masses[n] * ((norms_of_coords[n] ** 2) * k - coords[n][i] * coords[n][j])
                     for n, _ in enumerate(coords)
                 ]
             )
@@ -160,16 +161,6 @@ def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_floa
     for i in range(len(coords)):
         w += coords[i] * masses[i]
     return w / total_mass  # type: ignore[no-any-return]
-
-
-def get_moi_deviation_vec(
-    coords1: Array2D_float, coords2: Array2D_float, masses: Array1D_float
-) -> Array1D_float:
-    """Determine the relative difference of the three principal axes moments of inertia."""
-    im_1 = get_inertia_moments(coords1, masses)
-    im_2 = get_inertia_moments(coords2, masses)
-
-    return np.abs(im_1 - im_2) / im_1
 
 
 def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:

@@ -15,7 +15,7 @@ from networkx import (
     subgraph,
 )
 
-from prism_pruner.algebra import norm, norm_of, vec_angle
+from prism_pruner.algebra import norm_of, normalize, vec_angle
 from prism_pruner.graph_manipulations import (
     get_phenyl_ids,
     get_sp_n,
@@ -280,7 +280,7 @@ def get_hydrogen_bonds(
                 Hs = [i for i in graph.neighbors(i1) if graph.nodes[i]["atoms"] == "H"]
 
                 # versor connectring the two Heteroatoms
-                versor = norm(coords[i2] - coords[i1])
+                versor = normalize(coords[i2] - coords[i1])
 
                 for iH in Hs:
                     # vectors connecting heteroatoms to H

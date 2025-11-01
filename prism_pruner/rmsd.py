@@ -33,7 +33,6 @@ def rmsd_and_max(
     rmsd = np.sqrt((diff * diff).sum() / len(diff))
 
     # # Calculate max deviation
-    # max_delta = np.linalg.norm(diff, axis=1).max()
     max_delta = max([norm_of(v) for v in diff])
 
     return rmsd, max_delta
