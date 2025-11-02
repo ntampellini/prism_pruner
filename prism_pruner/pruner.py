@@ -1,6 +1,5 @@
 """PRISM - PRuning Interface for Similar Molecules."""
 
-from copy import deepcopy
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, Callable, Sequence
@@ -10,7 +9,7 @@ from networkx import Graph, connected_components
 from periodictable import elements
 from scipy.spatial.distance import cdist
 
-from prism_pruner.algebra import get_moi_deviation_vec
+from prism_pruner.algebra import get_inertia_moments
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
     get_angles,
@@ -22,6 +21,7 @@ from prism_pruner.torsion_module import (
 from prism_pruner.typing import (
     Array1D_bool,
     Array1D_float,
+    Array1D_int,
     Array1D_str,
     Array2D_float,
     Array2D_int,
@@ -79,11 +79,11 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
     graph: Graph = field(kw_only=True)
     heavy_atoms_only: bool = True
 
-    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
-        """Return if the structures are similar."""
+    def evaluate_sim(self, i1: int, i2: int) -> bool:
+        """Return whether the structures are similar."""
         rmsd, max_dev = rotationally_corrected_rmsd_and_max(
-            coord1,
-            coord2,
+            self.structures[i1],
+            self.structures[i2],
             atoms=self.atoms,
             torsions=self.torsions,
             graph=self.graph,
@@ -110,16 +110,16 @@ class RMSDPrunerConfig(PrunerConfig):
     max_dev: float = field(kw_only=True)
     heavy_atoms_only: bool = True
 
-    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
-        """Return if the structures are similar."""
+    def evaluate_sim(self, i1: int, i2: int) -> bool:
+        """Return whether the structures are similar."""
         if self.heavy_atoms_only:
             mask = self.atoms != "H"
         else:
             mask = np.ones(self.structures[0].shape[0], dtype=bool)
 
         rmsd, max_dev = rmsd_and_max(
-            coord1[mask],
-            coord2[mask],
+            self.structures[i1][mask],
+            self.structures[i2][mask],
             center=True,
         )
 
@@ -139,21 +139,32 @@ class MOIPrunerConfig(PrunerConfig):
     masses: Array1D_float = field(kw_only=True)
     max_dev: float = 0.01
 
-    def evaluate_sim(self, coord1: Array2D_float, coord2: Array2D_float) -> bool:
-        """Return if the structures are similar."""
-        dev_vec = get_moi_deviation_vec(
-            coord1,
-            coord2,
-            masses=self.masses,
+    def __post_init__(self) -> None:
+        """Add the moi_vecs calc to the parent's __post_init__."""
+        super().__post_init__()
+        self.moi_vecs = np.asarray(
+            [
+                get_inertia_moments(
+                    coord,
+                    self.masses,
+                )
+                for coord in self.structures
+            ]
         )
+
+    def evaluate_sim(self, i1: int, i2: int) -> bool:
+        """Return whether the structures are similar."""
+        im_1 = self.moi_vecs[i1]
+        im_2 = self.moi_vecs[i2]
+
+        dev_vec = np.abs(im_1 - im_2) / im_1
 
         return bool((dev_vec < self.max_dev).all())
 
 
 def _main_compute_subrow(
     prunerconfig: PrunerConfig,
-    ref: Array2D_float,
-    structures: Array3D_float,
+    indices: Array1D_int,
     in_mask: Array1D_bool,
     first_abs_index: int,
 ) -> bool:
@@ -167,7 +178,7 @@ def _main_compute_subrow(
     False (0)) by adding them to self.cache, avoiding redundant calcaulations.
     """
     # iterate over target structures
-    for i, structure in enumerate(structures):
+    for i, _ in enumerate(indices):
         # only compare active structures
         if in_mask[i]:
             # check if we have performed this comparison already:
@@ -180,26 +191,32 @@ def _main_compute_subrow(
             prunerconfig.calls += 1
             if hash_value in prunerconfig.cache:
                 prunerconfig.cache_calls += 1
+                continue
 
             # if we have not computed the value before, check if the two
             # structures have close enough energy before running the comparison
             elif np.abs(prunerconfig.energies[i1] - prunerconfig.energies[i2]) < prunerconfig.ewin:
-                # function will return True if the structures are similar,
+                # function will return True whether the structures are similar,
                 # and will stop iterating on this row, returning
-                if prunerconfig.evaluate_sim(ref, structure):
+                if prunerconfig.evaluate_sim(i1, i2):
                     return True
 
-            # if structures are not similar, add the result to the
-            # cache, because they will return here,
-            # while similar structures are discarded and won't come back
-            prunerconfig.cache.add(hash_value)
+                # if structures are not similar, add the result to the
+                # cache, because they will return here,
+                # while similar structures are discarded and won't come back
+                else:
+                    prunerconfig.cache.add(hash_value)
+
+            # if energy is not similar enough, also add to cache
+            else:
+                prunerconfig.cache.add(hash_value)
 
     return False
 
 
 def _main_compute_row(
     prunerconfig: PrunerConfig,
-    structures: Array3D_float,
+    row_indices: Array1D_int,
     in_mask: Array1D_bool,
     first_abs_index: int,
 ) -> Array1D_bool:
@@ -215,28 +232,26 @@ def _main_compute_row(
     out_mask = np.ones(shape=in_mask.shape, dtype=np.bool_)
 
     # loop over the structures
-    for i, ref in enumerate(structures):
+    for i, _ in enumerate(row_indices):
         # only check for similarity if the structure is active
         if in_mask[i]:
             # reject structure i if it is similar to any other after itself
             similar = _main_compute_subrow(
                 prunerconfig,
-                ref,
-                structures[i + 1 :],
+                row_indices[i + 1 :],
                 in_mask[i + 1 :],
                 first_abs_index=first_abs_index + i,
             )
             out_mask[i] = not similar
 
         else:
-            out_mask[i] = 0
+            out_mask[i] = False
 
     return out_mask
 
 
 def _main_compute_group(
     prunerconfig: PrunerConfig,
-    structures: Array2D_float,
     in_mask: Array1D_bool,
     k: int,
 ) -> Array1D_bool:
@@ -246,26 +261,26 @@ def _main_compute_group(
     returning the updated mask.
     """
     # initialize final result container
-    out_mask = np.ones(shape=structures.shape[0], dtype=np.bool_)
+    out_mask = np.ones(shape=in_mask.shape, dtype=np.bool_)
 
     # calculate the size of each chunk
-    chunksize = int(len(structures) // k)
+    chunksize = int(len(prunerconfig.structures) // k)
 
     # iterate over chunks (multithreading here?)
     for chunk in range(int(k)):
         first = chunk * chunksize
         if chunk == k - 1:
-            last = len(structures)
+            last = len(prunerconfig.structures)
         else:
             last = chunksize * (chunk + 1)
 
-        # get the structure chunk
-        structures_chunk = structures[first:last]
+        # get the structure indices chunk
+        indices_chunk = np.arange(first, last, 1, dtype=int)
 
         # compare structures within that chunk and save results to the out_mask
         out_mask[first:last] = _main_compute_row(
             prunerconfig,
-            structures_chunk,
+            indices_chunk,
             in_mask[first:last],
             first_abs_index=first,
         )
@@ -285,8 +300,6 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     Sets the self.structures and the corresponding self.mask attributes.
     """
     start_t = perf_counter()
-
-    structures = deepcopy(prunerconfig.structures)
 
     # initialize the output mask
     out_mask = np.ones(shape=prunerconfig.structures.shape[0], dtype=np.bool_)
@@ -324,7 +337,6 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
             # and the pairings to be added to cache
             out_mask = _main_compute_group(
                 prunerconfig,
-                structures,
                 out_mask,
                 k=int(k),
             )
