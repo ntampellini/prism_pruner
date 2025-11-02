@@ -169,12 +169,13 @@ def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
     Assumes centered vector sets (i.e. their mean is the origin).
     """
     # calculate the covariance matrix
-    cov_mat = np.ascontiguousarray(p.T) @ q
+    cov_mat = p.T @ q
 
     # Compute the SVD
     v, _, w = np.linalg.svd(cov_mat)
 
-    if (np.linalg.det(v) * np.linalg.det(w)) < 0.0:
-        v[:, -1] = -v[:, -1]
+    # Ensure proper rotation (det = 1, not -1)
+    if np.linalg.det(v) * np.linalg.det(w) < 0.0:
+        v[:, -1] *= -1
 
-    return np.dot(v, w)  # type: ignore[no-any-return]
+    return v @ w  # type: ignore[no-any-return]
