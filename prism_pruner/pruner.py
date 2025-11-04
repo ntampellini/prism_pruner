@@ -142,31 +142,27 @@ class MOIPrunerConfig(PrunerConfig):
     def __post_init__(self) -> None:
         """Add the moi_vecs calc to the parent's __post_init__."""
         super().__post_init__()
-        self.moi_vecs = np.asarray(
-            [
-                get_inertia_moments(
-                    coord,
-                    self.masses,
-                )
-                for coord in self.structures
-            ]
-        )
+        self.moi_vecs = {
+            c: get_inertia_moments(
+                coord,
+                self.masses,
+            )
+            for c, coord in enumerate(self.structures)
+        }
 
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
         im_1 = self.moi_vecs[i1]
         im_2 = self.moi_vecs[i2]
 
-        dev_vec = np.abs(im_1 - im_2) / im_1
-
-        return bool((dev_vec < self.max_dev).all())
+        return bool((np.abs(im_1 - im_2) / im_1 < self.max_dev).all())
 
 
 def _main_compute_subrow(
     prunerconfig: PrunerConfig,
-    indices: Array1D_int,
     in_mask: Array1D_bool,
     first_abs_index: int,
+    num_str_in_row: int,
 ) -> bool:
     """Evaluate the similarity of a subrow of the similarity matrix.
 
@@ -177,14 +173,15 @@ def _main_compute_subrow(
     than self.ewin. Saves dissimilar structural pairs (i.e. that evaluate to
     False (0)) by adding them to self.cache, avoiding redundant calcaulations.
     """
+    i1 = first_abs_index
+
     # iterate over target structures
-    for i in range(len(indices)):
+    for i in range(num_str_in_row):
         # only compare active structures
         if in_mask[i]:
             # check if we have performed this comparison already:
             # if so, we already know that those two structures are not similar,
             # since the in_mask attribute is not False for ref nor for i
-            i1 = first_abs_index
             i2 = first_abs_index + 1 + i
             hash_value = (i1, i2)
 
@@ -230,17 +227,18 @@ def _main_compute_row(
     """
     # initialize the result container
     out_mask = np.ones(shape=in_mask.shape, dtype=np.bool_)
+    line_len = len(row_indices)
 
     # loop over the structures
-    for i, _ in enumerate(row_indices):
+    for i in range(line_len):
         # only check for similarity if the structure is active
         if in_mask[i]:
             # reject structure i if it is similar to any other after itself
             similar = _main_compute_subrow(
                 prunerconfig,
-                row_indices[i + 1 :],
                 in_mask[i + 1 :],
                 first_abs_index=first_abs_index + i,
+                num_str_in_row=line_len - i - 1,
             )
             out_mask[i] = not similar
 
@@ -307,12 +305,12 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
 
     # split the structure array in subgroups and prune them internally
     for k in (
-        5e5,
-        2e5,
-        1e5,
-        5e4,
-        2e4,
-        1e4,
+        500_000,
+        200_000,
+        100_000,
+        50_000,
+        20_000,
+        10_000,
         5000,
         2000,
         1000,
@@ -338,7 +336,7 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
             out_mask = _main_compute_group(
                 prunerconfig,
                 out_mask,
-                k=int(k),
+                k=k,
             )
 
             after = np.count_nonzero(out_mask)
