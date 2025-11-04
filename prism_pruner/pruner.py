@@ -88,7 +88,7 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
             torsions=self.torsions,
             graph=self.graph,
             angles=self.angles,
-            debugfunction=self.debugfunction,
+            # debugfunction=self.debugfunction, # lots of printout
             heavy_atoms_only=self.heavy_atoms_only,
         )
 
@@ -178,7 +178,7 @@ def _main_compute_subrow(
     False (0)) by adding them to self.cache, avoiding redundant calcaulations.
     """
     # iterate over target structures
-    for i, _ in enumerate(indices):
+    for i in range(len(indices)):
         # only compare active structures
         if in_mask[i]:
             # check if we have performed this comparison already:

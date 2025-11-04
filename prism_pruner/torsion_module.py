@@ -15,7 +15,7 @@ from networkx import (
     subgraph,
 )
 
-from prism_pruner.algebra import norm_of, normalize, vec_angle
+from prism_pruner.algebra import vec_angle
 from prism_pruner.graph_manipulations import (
     get_phenyl_ids,
     get_sp_n,
@@ -275,12 +275,13 @@ def get_hydrogen_bonds(
                     continue
 
             # keep close pairs
-            if d_min < norm_of(coords[i1] - coords[i2]) < d_max:
+            if d_min < np.linalg.norm(coords[i1] - coords[i2]) < d_max:
                 # getting the indices of all H atoms attached to them
                 Hs = [i for i in graph.neighbors(i1) if graph.nodes[i]["atoms"] == "H"]
 
                 # versor connectring the two Heteroatoms
-                versor = normalize(coords[i2] - coords[i1])
+                versor = coords[i2] - coords[i1]
+                versor = versor / np.linalg.norm(versor)
 
                 for iH in Hs:
                     # vectors connecting heteroatoms to H
@@ -288,8 +289,8 @@ def get_hydrogen_bonds(
                     v2 = coords[iH] - coords[i2]
 
                     # lengths of these vectors
-                    d1 = norm_of(v1)
-                    d2 = norm_of(v2)
+                    d1 = np.linalg.norm(v1)
+                    d2 = np.linalg.norm(v2)
 
                     # scalar projection in the heteroatom direction
                     l1 = v1 @ versor
@@ -444,8 +445,8 @@ def rotationally_corrected_rmsd_and_max(
             heavy_mask = np.array([a != "H" for a in atoms])
             global_rmsd = rmsd_and_max(ref[heavy_mask], coord[heavy_mask])[0]
             debugfunction(
-                f"Torsion {i + 1} - {torsion}: best corr = {torsion_corrections[i]}°, 4-atom RMSD: "
-                + f"{best_rmsd:.3f} A, global RMSD: {global_rmsd:.3f}"
+                f"    Torsion {i + 1} - {torsion}: best θ = {torsion_corrections[i]}°, "
+                + f"4-atom RMSD: {best_rmsd:.3f} Å, global RMSD: {global_rmsd:.3f} Å"
             )
 
     # we should have the optimal orientation on all torsions now:

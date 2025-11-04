@@ -2312,7 +2312,7 @@ packages:
 - pypi: ./
   name: prism-pruner
   version: 0.0.1
-  sha256: 405eb6e19c785ab72857a27fc69b67b51ca98f609ea468a62b812e0f497066f9
+  sha256: 08c3c075a6918bdef103b967cd21c621eb507b5c58882c1f3396ba17fa39b74a
   requires_python: '>=3.12'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/prometheus_client-0.23.1-pyhd8ed1ab_0.conda

@@ -7,7 +7,7 @@ from networkx import Graph, all_simple_paths, from_numpy_array, set_node_attribu
 from periodictable import elements
 from scipy.spatial.distance import cdist
 
-from prism_pruner.algebra import dihedral, norm_of
+from prism_pruner.algebra import dihedral
 from prism_pruner.typing import Array1D_bool, Array1D_str, Array2D_float
 
 
@@ -43,7 +43,7 @@ def graphize(
             if not mask_j:
                 continue
 
-            if norm_of(coords[i] - coords[j]) < d_min_bond(atoms[i], atoms[j]):
+            if np.linalg.norm(coords[i] - coords[j]) < d_min_bond(atoms[i], atoms[j]):
                 matrix[i][j] = 1
 
     graph = from_numpy_array(matrix)

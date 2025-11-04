@@ -1,20 +1,15 @@
 """Algebra utilities."""
 
-from typing import Sequence, cast
+from typing import Sequence
 
 import numpy as np
 
 from prism_pruner.typing import Array1D_float, Array2D_float, Array3D_float
 
 
-def norm_of(vec: Array1D_float) -> float:
-    """Return the norm of the vector."""
-    return cast("float", np.linalg.norm(vec, axis=None))
-
-
 def normalize(vec: Array1D_float) -> Array1D_float:
     """Normalize a vector."""
-    return vec / norm_of(vec)
+    return vec / np.linalg.norm(vec)
 
 
 def vec_angle(v1: Array1D_float, v2: Array1D_float) -> float:
@@ -22,7 +17,14 @@ def vec_angle(v1: Array1D_float, v2: Array1D_float) -> float:
     return float(
         np.degrees(
             np.arccos(
-                np.clip(np.dot(normalize(v1), normalize(v2)), -1.0, 1.0),
+                np.clip(
+                    np.dot(
+                        v1 / np.linalg.norm(v1),
+                        v2 / np.linalg.norm(v2),
+                    ),
+                    -1.0,
+                    1.0,
+                ),
             )
         )
     )
@@ -42,7 +44,7 @@ def dihedral(p: Array2D_float) -> float:
 
     # normalize b1 so that it does not influence magnitude of vector
     # rejections that come next
-    b1 /= norm_of(b1)
+    b1 /= np.linalg.norm(b1)
 
     # vector rejections
     # v = projection of b0 onto plane perpendicular to b1
@@ -72,7 +74,7 @@ def rot_mat_from_pointer(pointer: Array1D_float, angle: float) -> Array2D_float:
 
     angle_2 = np.radians(angle) / 2
     sin = np.sin(angle_2)
-    pointer = normalize(pointer)
+    pointer = pointer / np.linalg.norm(pointer)
     return quaternion_to_rotation_matrix(
         [
             sin * pointer[0],
@@ -115,13 +117,6 @@ def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Arra
     return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
-def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
-    """Find the center of mass for the atomic system."""
-    total_mass = np.sum(masses)
-    w = np.sum(coords * masses[:, np.newaxis], axis=0)
-    return w / total_mass  # type: ignore[no-any-return]
-
-
 def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
     """
     Find the moments of inertia of the three principal axes.
@@ -130,26 +125,17 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     a shape (3,) array with the moments of inertia along the main axes.
     (I_x, I_y and largest I_z last)
     """
-    coords = coords - center_of_mass(coords, masses)
+    # Center coordinates around the center of mass
+    coords = coords - np.sum(coords * masses[:, np.newaxis], axis=0)
 
-    # Compute r^2 for each atom (shape: (n,))
-    norms_squared = np.sum(coords**2, axis=1)
+    # Compute r^2 for each atom
+    norms_squared = np.einsum("ni,ni->n", coords, coords)
 
-    # Build inertia tensor using vectorized operations
-    # I_ij = sum_n m_n (r^2 * delta_ij - r_i * r_j)
-    inertia_moment_matrix = np.zeros((3, 3))
+    # Build inertia tensor using einsum
+    total = np.sum(masses * norms_squared)
+    inertia_moment_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", masses, coords, coords)
 
-    for i in range(3):
-        for j in range(3):
-            if i == j:
-                # Diagonal: sum of m_n * r^2 - m_n * r_i^2
-                inertia_moment_matrix[i, j] = np.sum(
-                    masses * norms_squared - masses * coords[:, i] ** 2
-                )
-            else:
-                # Off-diagonal: sum of -m_n * r_i * r_j
-                inertia_moment_matrix[i, j] = -np.sum(masses * coords[:, i] * coords[:, j])
-
+    # diagonalize the matrix and return the diagonal
     inertia_moment_matrix = diagonalize(inertia_moment_matrix)
 
     return np.diag(inertia_moment_matrix)
