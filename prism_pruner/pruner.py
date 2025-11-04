@@ -155,7 +155,13 @@ class MOIPrunerConfig(PrunerConfig):
         im_1 = self.moi_vecs[i1]
         im_2 = self.moi_vecs[i2]
 
-        return bool((np.abs(im_1 - im_2) / im_1 < self.max_dev).all())
+        # compare the three MOIs via a Python loop:
+        # apparently much faster than numpy array operations
+        # for such a small array!
+        for j in range(3):
+            if np.abs(im_1[j] - im_2[j]) / im_1[j] >= self.max_dev:
+                return False
+        return True
 
 
 def _main_compute_subrow(
