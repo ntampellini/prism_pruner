@@ -6,7 +6,7 @@ import numpy as np
 from numpy.linalg import LinAlgError
 from numpy.typing import ArrayLike
 
-from prism_pruner.algebra import get_alignment_matrix, norm_of, rot_mat_from_pointer
+from prism_pruner.algebra import get_alignment_matrix, rot_mat_from_pointer
 from prism_pruner.typing import Array1D_bool, Array1D_int, Array1D_str, Array2D_float, Array3D_float
 
 
@@ -89,7 +89,7 @@ def get_double_bonds_indices(coords: Array2D_float, atoms: Array1D_str) -> list[
 
     for i1, _ in enumerate(coords):
         for i2 in range(i1 + 1, len(coords)):
-            dist = norm_of(coords[i1] - coords[i2])
+            dist = np.linalg.norm(coords[i1] - coords[i2])
             tag = "".join(sorted([atoms_masked[i1], atoms_masked[i2]]))
 
             threshold = double_bonds_thresholds_dict.get(tag)

@@ -4,25 +4,27 @@ from typing import Sequence
 
 import numpy as np
 
-from prism_pruner.typing import Array1D_float, Array1D_int, Array2D_float, Array3D_float
+from prism_pruner.typing import Array1D_float, Array2D_float, Array3D_float
 
 
-def norm(vec: Array1D_int) -> Array1D_int:
-    """Normalize a vector (3D only)."""
-    return vec / np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]))  # type: ignore[no-any-return]
+def normalize(vec: Array1D_float) -> Array1D_float:
+    """Normalize a vector."""
+    return vec / np.linalg.norm(vec)
 
 
-def norm_of(vec: Array1D_int) -> float:
-    """Norm of a vector (3D only)."""
-    return float(np.sqrt((vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])))
-
-
-def vec_angle(v1: Array1D_int, v2: Array1D_int) -> float:
+def vec_angle(v1: Array1D_float, v2: Array1D_float) -> float:
     """Return the planar angle defined by two 3D vectors."""
     return float(
         np.degrees(
             np.arccos(
-                np.clip(np.dot(norm(v1), norm(v2)), -1.0, 1.0),
+                np.clip(
+                    np.dot(
+                        v1 / np.linalg.norm(v1),
+                        v2 / np.linalg.norm(v2),
+                    ),
+                    -1.0,
+                    1.0,
+                ),
             )
         )
     )
@@ -42,7 +44,7 @@ def dihedral(p: Array2D_float) -> float:
 
     # normalize b1 so that it does not influence magnitude of vector
     # rejections that come next
-    b1 /= norm_of(b1)
+    b1 /= np.linalg.norm(b1)
 
     # vector rejections
     # v = projection of b0 onto plane perpendicular to b1
@@ -60,7 +62,7 @@ def dihedral(p: Array2D_float) -> float:
     return float(np.degrees(np.arctan2(y, x)))
 
 
-def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
+def rot_mat_from_pointer(pointer: Array1D_float, angle: float) -> Array2D_float:
     """
     Get the rotation matrix from the rotation pivot using a quaternion.
 
@@ -72,7 +74,7 @@ def rot_mat_from_pointer(pointer: Array1D_int, angle: float) -> Array2D_float:
 
     angle_2 = np.radians(angle) / 2
     sin = np.sin(angle_2)
-    pointer = norm(pointer)
+    pointer = pointer / np.linalg.norm(pointer)
     return quaternion_to_rotation_matrix(
         [
             sin * pointer[0],
@@ -115,11 +117,6 @@ def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Arra
     return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
-def kronecker_delta(i: int, j: int) -> int:
-    """Kronecker delta."""
-    return int(i == j)
-
-
 def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
     """
     Find the moments of inertia of the three principal axes.
@@ -128,19 +125,17 @@ def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D
     a shape (3,) array with the moments of inertia along the main axes.
     (I_x, I_y and largest I_z last)
     """
-    coords -= center_of_mass(coords, masses)
-    inertia_moment_matrix = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    # Center coordinates around the center of mass
+    coords = coords - np.sum(coords * masses[:, np.newaxis], axis=0)
 
-    for i in range(3):
-        for j in range(3):
-            k = kronecker_delta(i, j)
-            inertia_moment_matrix[i][j] = sum(
-                [
-                    masses[n] * ((norm_of(coords[n]) ** 2) * k - coords[n][i] * coords[n][j])
-                    for n, _ in enumerate(coords)
-                ]
-            )
+    # Compute r^2 for each atom
+    norms_squared = np.einsum("ni,ni->n", coords, coords)
 
+    # Build inertia tensor using einsum
+    total = np.sum(masses * norms_squared)
+    inertia_moment_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", masses, coords, coords)
+
+    # diagonalize the matrix and return the diagonal
     inertia_moment_matrix = diagonalize(inertia_moment_matrix)
 
     return np.diag(inertia_moment_matrix)
@@ -153,25 +148,6 @@ def diagonalize(a: Array2D_float) -> Array2D_float:
     return np.dot(np.linalg.inv(b), np.dot(a, b))  # type: ignore[no-any-return]
 
 
-def center_of_mass(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
-    """Find the center of mass for the atomic system."""
-    total_mass = sum([masses[i] for i in range(len(coords))])
-    w = np.array([0.0, 0.0, 0.0])
-    for i in range(len(coords)):
-        w += coords[i] * masses[i]
-    return w / total_mass  # type: ignore[no-any-return]
-
-
-def get_moi_deviation_vec(
-    coords1: Array2D_float, coords2: Array2D_float, masses: Array1D_float
-) -> Array1D_float:
-    """Determine the relative difference of the three principal axes moments of inertia."""
-    im_1 = get_inertia_moments(coords1, masses)
-    im_2 = get_inertia_moments(coords2, masses)
-
-    return np.abs(im_1 - im_2) / im_1
-
-
 def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
     """
     Build the rotation matrix that aligns vectors q to p (Kabsch algorithm).
@@ -179,12 +155,13 @@ def get_alignment_matrix(p: Array1D_float, q: Array1D_float) -> Array2D_float:
     Assumes centered vector sets (i.e. their mean is the origin).
     """
     # calculate the covariance matrix
-    cov_mat = np.ascontiguousarray(p.T) @ q
+    cov_mat = p.T @ q
 
     # Compute the SVD
     v, _, w = np.linalg.svd(cov_mat)
 
-    if (np.linalg.det(v) * np.linalg.det(w)) < 0.0:
-        v[:, -1] = -v[:, -1]
+    # Ensure proper rotation (det = 1, not -1)
+    if np.linalg.det(v) * np.linalg.det(w) < 0.0:
+        v[:, -1] *= -1
 
-    return np.dot(v, w)  # type: ignore[no-any-return]
+    return v @ w  # type: ignore[no-any-return]
