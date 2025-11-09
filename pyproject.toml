@@ -37,7 +37,7 @@ all = { depends-on = ["fmt", "lint", "types", "test"] }
 pytest = ">=8.3"
 pytest-cov = ">=7.0"
 ruff = ">=0.11"
-mypy = ">=1.15"
+mypy = ">=1.18.2,<2"
 pre-commit = ">=4.2"
 jupyter = "*"
 line_profiler = ">=5.0.0"
@@ -68,7 +68,9 @@ select = [
     "ICN001", # unconventional-import-alias
 ]
 ignore = [
+    "N803", # Invalid-argument-name (non-lowercase)
     "N806", # Non-lowercase variable in function
+    "N815", # Variable in class scope should not be mixedCase
     "PLR0911", # Too many returns
     "PLR0912", # Too many branches
     "PLR0913", # Too many arguments to function call

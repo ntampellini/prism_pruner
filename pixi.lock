@@ -2316,7 +2316,7 @@ packages:
 - pypi: ./
   name: prism-pruner
   version: 0.0.2
-  sha256: fa88e6cd3c39000fea95c0b7530d9bf09c90ba0363fe328f5434f54d2c7ff685
+  sha256: 9f9037ef54a182ca8e37c8555f5540bdcb2a13c3a6fa52100a569008f8778d3e
   requires_dist:
   - networkx>=3.0
   - numpy>=2.0

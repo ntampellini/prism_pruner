@@ -38,11 +38,11 @@ class PrunerConfig:
 
     # Optional parameters that get initialized
     energies: Array1D_float = field(default_factory=lambda: np.array([]))
-    ewin: float = field(default=0.0)
+    max_dE: float = field(default=0.0)
     debugfunction: Callable[[str], None] | None = field(default=None)
 
     # Computed fields
-    calls: int = field(default=0, init=False)
+    eval_calls: int = field(default=0, init=False)
     cache_calls: int = field(default=0, init=False)
     cache: set[tuple[int, int]] = field(default_factory=lambda: set(), init=False)
 
@@ -51,16 +51,21 @@ class PrunerConfig:
         self.mask = np.ones(shape=(self.structures.shape[0],), dtype=np.bool_)
 
         if len(self.energies) != 0:
-            assert self.ewin > 0.0, (
-                "If you provide energies, please also provide an appropriate energy window ewin."
+            assert self.max_dE > 0.0, (
+                "If you provide energies, please also provide an appropriate energy window max_dE."
             )
 
         # Set defaults for optional parameters
         if len(self.energies) == 0:
-            self.energies = np.zeros(self.structures.shape[0])
+            self.energies = np.zeros(self.structures.shape[0], dtype=float)
 
-        if self.ewin == 0.0:
-            self.ewin = 1.0
+        assert len(self.energies) == len(self.structures), (
+            "Please make sure that the energies "
+            + "provided have the same len as the input structures."
+        )
+
+        if self.max_dE == 0.0:
+            self.max_dE = 1.0
 
     def evaluate_sim(self, *args: Any, **kwargs: Any) -> bool:
         """Stub method - override in subclasses as needed."""
@@ -176,7 +181,7 @@ def _main_compute_subrow(
     structure in structures, returning at the first instance of a match.
     Ignores structures that are False (0) in in_mask and does not perform
     the comparison if the energy difference between the structures is less
-    than self.ewin. Saves dissimilar structural pairs (i.e. that evaluate to
+    than self.max_dE. Saves dissimilar structural pairs (i.e. that evaluate to
     False (0)) by adding them to self.cache, avoiding redundant calcaulations.
     """
     i1 = first_abs_index
@@ -191,16 +196,18 @@ def _main_compute_subrow(
             i2 = first_abs_index + 1 + i
             hash_value = (i1, i2)
 
-            prunerconfig.calls += 1
             if hash_value in prunerconfig.cache:
                 prunerconfig.cache_calls += 1
                 continue
 
             # if we have not computed the value before, check if the two
             # structures have close enough energy before running the comparison
-            elif np.abs(prunerconfig.energies[i1] - prunerconfig.energies[i2]) < prunerconfig.ewin:
+            elif (
+                np.abs(prunerconfig.energies[i1] - prunerconfig.energies[i2]) < prunerconfig.max_dE
+            ):
                 # function will return True whether the structures are similar,
                 # and will stop iterating on this row, returning
+                prunerconfig.eval_calls += 1
                 if prunerconfig.evaluate_sim(i1, i2):
                     return True
 
@@ -309,6 +316,14 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     out_mask = np.ones(shape=prunerconfig.structures.shape[0], dtype=np.bool_)
     prunerconfig.cache = set()
 
+    # sort structures by ascending energy: this will have the effect of
+    # having energetically similar structures end up in the same chunk
+    # and therefore being pruned early
+    if np.abs(prunerconfig.energies[-1]) > 0:
+        sorting_indices = np.argsort(prunerconfig.energies)
+        prunerconfig.structures = prunerconfig.structures[sorting_indices]
+        prunerconfig.energies = prunerconfig.energies[sorting_indices]
+
     # split the structure array in subgroups and prune them internally
     for k in (
         500_000,
@@ -365,11 +380,17 @@ def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
             + f"({time_to_string(elapsed)})"
         )
 
-        fraction = 0 if prunerconfig.calls == 0 else prunerconfig.cache_calls / prunerconfig.calls
+        if prunerconfig.eval_calls == 0:
+            fraction = 0.0
+        else:
+            fraction = prunerconfig.cache_calls / (
+                prunerconfig.eval_calls + prunerconfig.cache_calls
+            )
+
         prunerconfig.debugfunction(
             f"DEBUG: {prunerconfig.__class__.__name__} - Used cached data "
-            + f"{prunerconfig.cache_calls}/{prunerconfig.calls} times, "
-            + f"{100 * fraction:.2f}% of total calls"
+            + f"{prunerconfig.cache_calls}/{prunerconfig.eval_calls + prunerconfig.cache_calls}"
+            + f" times, {100 * fraction:.2f}% of total calls"
         )
 
     return prunerconfig.structures[out_mask], out_mask
@@ -380,6 +401,8 @@ def prune_by_rmsd(
     atoms: Array1D_str,
     max_rmsd: float = 0.25,
     max_dev: float | None = None,
+    energies: Array1D_float | None = None,
+    max_dE: float = 0.0,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
     """Remove duplicate structures using a heavy-atom RMSD metric.
@@ -391,6 +414,9 @@ def prune_by_rmsd(
     Similarity occurs for structures with both RMSD < max_rmsd and
     maximum deviation < max_dev. max_dev by default is 2 * max_rmsd.
     """
+    if energies is None:
+        energies = np.array([])
+
     # set default max_dev if not provided
     max_dev = max_dev or 2 * max_rmsd
 
@@ -400,6 +426,8 @@ def prune_by_rmsd(
         atoms=atoms,
         max_rmsd=max_rmsd,
         max_dev=max_dev,
+        energies=energies,
+        max_dE=max_dE,
         debugfunction=debugfunction,
     )
 
@@ -413,6 +441,8 @@ def prune_by_rmsd_rot_corr(
     graph: Graph,
     max_rmsd: float = 0.25,
     max_dev: float | None = None,
+    energies: Array1D_float | None = None,
+    max_dE: float = 0.0,
     logfunction: Callable[[str], None] | None = None,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
@@ -535,10 +565,15 @@ def prune_by_rmsd_rot_corr(
             )
         logfunction("\n")
 
+    if energies is None:
+        energies = np.array([])
+
     # Initialize PrunerConfig
     prunerconfig = RMSDRotCorrPrunerConfig(
         structures=structures,
         atoms=atoms,
+        energies=energies,
+        max_dE=max_dE,
         graph=graph,
         torsions=torsions_ids,
         debugfunction=debugfunction,
@@ -561,19 +596,25 @@ def prune_by_moment_of_inertia(
     structures: Array3D_float,
     atoms: Array1D_str,
     max_deviation: float = 1e-2,
+    energies: Array1D_float | None = None,
+    max_dE: float = 0.0,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
     """Remove duplicate structures using a moments of inertia-based metric.
 
     Remove duplicate structures (enantiomeric or rotameric) based on the
-    moments of inertia on the principal axes. If all three MOI
-    deviate less than max_deviation percent from another structure,
-    they are classified as rotamers or enantiomers and therefore only one
-    of them is kept (i.e. max_deviation = 0.1 is 10% relative deviation).
+    moment of inertia on the principal axes. If all three deviate less than
+    max_deviation percent from another one, the structure is removed from
+    the ensemble (i.e. max_deviation = 0.1 is 10% relative deviation).
     """
+    if energies is None:
+        energies = np.array([])
+
     # set up PrunerConfig dataclass
     prunerconfig = MOIPrunerConfig(
         structures=structures,
+        energies=energies,
+        max_dE=max_dE,
         debugfunction=debugfunction,
         max_dev=max_deviation,
         masses=np.array([elements.symbol(a).mass for a in atoms]),

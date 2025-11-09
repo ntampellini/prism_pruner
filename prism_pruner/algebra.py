@@ -118,27 +118,23 @@ def quaternion_to_rotation_matrix(quat: Array1D_float | Sequence[float]) -> Arra
 
 
 def get_inertia_moments(coords: Array3D_float, masses: Array1D_float) -> Array1D_float:
+    """Compute the principal moments of inertia of a molecule.
+
+    Returns a length-3 array [I_x, I_y, I_z], sorted ascending.
     """
-    Find the moments of inertia of the three principal axes.
+    # Shift to center of mass
+    com = np.sum(coords * masses[:, np.newaxis], axis=0) / np.sum(masses)
+    coords = coords - com
 
-    :return: diagonal of the diagonalized inertia tensor, that is
-    a shape (3,) array with the moments of inertia along the main axes.
-    (I_x, I_y and largest I_z last)
-    """
-    # Center coordinates around the center of mass
-    coords = coords - np.sum(coords * masses[:, np.newaxis], axis=0)
+    # Compute inertia tensor
+    norms_sq = np.einsum("ni,ni->n", coords, coords)
+    total = np.sum(masses * norms_sq)
+    I_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", masses, coords, coords)
 
-    # Compute r^2 for each atom
-    norms_squared = np.einsum("ni,ni->n", coords, coords)
+    # Principal moments via symmetric eigendecomposition
+    moments, _ = np.linalg.eigh(I_matrix)
 
-    # Build inertia tensor using einsum
-    total = np.sum(masses * norms_squared)
-    inertia_moment_matrix = total * np.eye(3) - np.einsum("n,ni,nj->ij", masses, coords, coords)
-
-    # diagonalize the matrix and return the diagonal
-    inertia_moment_matrix = diagonalize(inertia_moment_matrix)
-
-    return np.diag(inertia_moment_matrix)
+    return np.sort(moments)
 
 
 def diagonalize(a: Array2D_float) -> Array2D_float:

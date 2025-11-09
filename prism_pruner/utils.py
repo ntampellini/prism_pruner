@@ -9,6 +9,10 @@ from numpy.typing import ArrayLike
 from prism_pruner.algebra import get_alignment_matrix, rot_mat_from_pointer
 from prism_pruner.typing import Array1D_bool, Array1D_int, Array1D_str, Array2D_float, Array3D_float
 
+EH_TO_EV = 27.211399
+EH_TO_KCAL = 627.5096080305927
+EV_TO_KCAL = 23.060541945329334
+
 
 def align_structures(
     structures: Array3D_float, indices: Array1D_int | None = None
@@ -115,19 +119,20 @@ def rotate_dihedral(
 
     angle: angle, in degrees
     """
-    i1, i2, i3, _ = dihedral
+    i1, i2, i3, *_ = dihedral
 
     if indices_to_be_moved is not None:
         mask = np.isin(np.arange(len(coords)), indices_to_be_moved)
 
     if mask is None:
-        mask = np.array([[i1]])
+        mask = np.zeros(len(coords), dtype=bool)
+        mask[i1] = True
 
     axis = coords[i2] - coords[i3]
     mat = rot_mat_from_pointer(axis, angle)
-    center = coords[i3]
 
-    coords[mask] = (mat @ (coords[mask] - center).T).T + center
+    center = coords[i3]
+    coords[mask] = (coords[mask] - center) @ mat.T + center
 
     return coords
 

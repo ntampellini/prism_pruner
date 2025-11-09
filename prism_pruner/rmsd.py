@@ -9,7 +9,7 @@ from prism_pruner.typing import Array2D_float
 def rmsd_and_max(
     p: Array2D_float,
     q: Array2D_float,
-    center: bool = False,
+    center: bool = True,
 ) -> tuple[float, float]:
     """Return RMSD and max deviation.
 
