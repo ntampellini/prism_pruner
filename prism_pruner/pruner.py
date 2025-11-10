@@ -10,6 +10,7 @@ from periodictable import elements
 from scipy.spatial.distance import cdist
 
 from prism_pruner.algebra import get_inertia_moments
+from prism_pruner.graph_manipulations import graphize
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
     get_angles,
@@ -298,7 +299,7 @@ def _main_compute_group(
     return out_mask
 
 
-def prune(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
+def _run(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     """Perform the similarity pruning.
 
     Remove similar structures by repeatedly grouping them into k
@@ -403,6 +404,7 @@ def prune_by_rmsd(
     max_dev: float | None = None,
     energies: Array1D_float | None = None,
     max_dE: float = 0.0,
+    heavy_atoms_only: bool = True,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
     """Remove duplicate structures using a heavy-atom RMSD metric.
@@ -429,10 +431,11 @@ def prune_by_rmsd(
         energies=energies,
         max_dE=max_dE,
         debugfunction=debugfunction,
+        heavy_atoms_only=heavy_atoms_only,
     )
 
     # run the pruning
-    return prune(prunerconfig)
+    return _run(prunerconfig)
 
 
 def prune_by_rmsd_rot_corr(
@@ -443,6 +446,7 @@ def prune_by_rmsd_rot_corr(
     max_dev: float | None = None,
     energies: Array1D_float | None = None,
     max_dE: float = 0.0,
+    heavy_atoms_only: bool = True,
     logfunction: Callable[[str], None] | None = None,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
@@ -459,8 +463,8 @@ def prune_by_rmsd_rot_corr(
     of all the degenerate rotamers of the input structure.
     """
     # center structures
-    structures = np.array([s - s.mean(axis=0) for s in structures])
-    ref = structures[0]
+    temp_structures = np.array([s - s.mean(axis=0) for s in structures])
+    ref = temp_structures[0]
 
     # get the number of molecular fragments
     subgraphs = list(connected_components(graph))
@@ -570,26 +574,29 @@ def prune_by_rmsd_rot_corr(
 
     # Initialize PrunerConfig
     prunerconfig = RMSDRotCorrPrunerConfig(
-        structures=structures,
+        structures=temp_structures,
         atoms=atoms,
         energies=energies,
         max_dE=max_dE,
         graph=graph,
         torsions=torsions_ids,
         debugfunction=debugfunction,
+        heavy_atoms_only=heavy_atoms_only,
         angles=angles,
         max_rmsd=max_rmsd,
         max_dev=max_dev,
     )
 
     # run pruning
-    structures_out, mask = prune(prunerconfig)
+    _temp_structures_out, mask = _run(prunerconfig)
 
     # remove the extra bond in the molecular graph
     if len(subgraphs) == 2:
         graph.remove_edge(i1, i2)
 
-    return structures_out, mask
+    # return the original coordinates (and not the temp)
+    # to make sure they return untouched by the function
+    return structures[mask], mask
 
 
 def prune_by_moment_of_inertia(
@@ -620,4 +627,90 @@ def prune_by_moment_of_inertia(
         masses=np.array([elements.symbol(a).mass for a in atoms]),
     )
 
-    return prune(prunerconfig)
+    return _run(prunerconfig)
+
+
+def prune(
+    structures: Array3D_float,
+    atoms: Array1D_str,
+    moi_pruning: bool = True,
+    rmsd_pruning: bool = True,
+    rot_corr_rmsd_pruning: bool = False,
+    energies: Array1D_float | None = None,
+    max_dE: float = 0.0,
+    debugfunction: Callable[[str], None] | None = None,
+    logfunction: Callable[[str], None] | None = None,
+) -> tuple[Array3D_float, Array1D_bool]:
+    """Remove duplicate structures.
+
+    Chains the three main pruning modes on the
+    input ensemble, unless prompted otherwise.
+
+    Will only compare structures less than max_dE apart
+    in energy, if energies and max_dE are provided.
+
+    Note: will use automatic pruning thresholds.
+    """
+    if energies is None:
+        energies = np.array([0.0 for _ in range(len(structures))])
+        max_dE = 1.0
+
+    active_ens = structures
+    active_indices = np.arange(structures.shape[0])
+
+    if moi_pruning:
+        active_ens, mask = prune_by_moment_of_inertia(
+            structures=active_ens,
+            atoms=atoms,
+            max_deviation=0.01,
+            energies=energies,
+            max_dE=max_dE,
+            debugfunction=debugfunction,
+        )
+        energies = energies[mask]
+        active_indices = active_indices[mask]
+
+        # add space between different logs
+        if debugfunction is not None:
+            debugfunction("")
+
+    if rmsd_pruning:
+        active_ens, mask = prune_by_rmsd(
+            structures=active_ens,
+            atoms=atoms,
+            max_rmsd=0.25,
+            max_dev=0.5,
+            energies=energies,
+            max_dE=max_dE,
+            debugfunction=debugfunction,
+        )
+        energies = energies[mask]
+        active_indices = active_indices[mask]
+
+        # add space between different logs
+        if debugfunction is not None:
+            debugfunction("")
+
+    if rot_corr_rmsd_pruning:
+        graph = graphize(atoms, active_ens[0])
+
+        active_ens, mask = prune_by_rmsd_rot_corr(
+            structures=active_ens,
+            atoms=atoms,
+            graph=graph,
+            max_rmsd=0.25,
+            max_dev=0.5,
+            energies=energies,
+            max_dE=max_dE,
+            debugfunction=debugfunction,
+            logfunction=logfunction,
+        )
+        active_indices = active_indices[mask]
+
+    # now backtrack the effect of all the pruning
+    # so that we know which structures we got rid of
+    # and we can return the appropriate boolean mask
+    cumulative_mask = np.zeros(structures.shape[0], dtype=np.bool_)
+    cumulative_mask[active_indices] = True
+
+    return active_ens, cumulative_mask

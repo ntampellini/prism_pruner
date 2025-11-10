@@ -2,7 +2,7 @@
 name = "prism_pruner"
 description = "Prism Pruner"
 license = "MIT"
-version = "0.0.2"
+version = "0.0.3"
 readme = "README.md"
 keywords = []
 authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]
@@ -43,6 +43,8 @@ jupyter = "*"
 line_profiler = ">=5.0.0"
 
 [tool.pixi.dependencies]
+pkginfo = ">=1.10"
+twine = ">=6.1"
 
 [tool.ruff]
 line-length = 100
