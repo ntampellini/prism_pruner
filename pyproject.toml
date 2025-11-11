@@ -45,6 +45,7 @@ line_profiler = ">=5.0.0"
 [tool.pixi.dependencies]
 pkginfo = ">=1.10"
 twine = ">=6.1"
+pre-commit = ">=4.4.0,<5"
 
 [tool.ruff]
 line-length = 100

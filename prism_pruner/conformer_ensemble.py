@@ -48,7 +48,7 @@ class ConformerEnsemble:
         """Write ensemble to an xyz file."""
 
         def to_xyz(coords: Array2D_float) -> str:
-            return "\n".join(
+            return f"{len(coords)}\n\n" + "\n".join(
                 f"{atom} {x:15.8f} {y:15.8f} {z:15.8f}"
                 for atom, (x, y, z) in zip(self.atoms, coords, strict=True)
             )
