@@ -49,6 +49,9 @@ class PrunerConfig:
 
     def __post_init__(self) -> None:
         """Validate inputs and initialize computed fields."""
+        # validate input types
+        assert type(self.structures) is np.ndarray
+
         self.mask = np.ones(shape=(self.structures.shape[0],), dtype=np.bool_)
 
         if len(self.energies) != 0:
@@ -58,6 +61,7 @@ class PrunerConfig:
 
         # Set defaults for optional parameters
         if len(self.energies) == 0:
+            assert type(self.energies) is np.ndarray
             self.energies = np.zeros(self.structures.shape[0], dtype=float)
 
         assert len(self.energies) == len(self.structures), (
@@ -84,6 +88,14 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
     torsions: Array2D_int = field(kw_only=True)
     graph: Graph = field(kw_only=True)
     heavy_atoms_only: bool = True
+
+    def __post_init__(self) -> None:
+        """Add type enforcing to the parent's __post_init__."""
+        super().__post_init__()
+
+        # validate input types
+        assert type(self.atoms) is np.ndarray
+        assert type(self.graph) is Graph
 
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
@@ -116,6 +128,13 @@ class RMSDPrunerConfig(PrunerConfig):
     max_dev: float = field(kw_only=True)
     heavy_atoms_only: bool = True
 
+    def __post_init__(self) -> None:
+        """Add type enforcing to the parent's __post_init__."""
+        super().__post_init__()
+
+        # validate input types
+        assert type(self.atoms) is np.ndarray
+
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
         if self.heavy_atoms_only:
@@ -146,8 +165,12 @@ class MOIPrunerConfig(PrunerConfig):
     max_dev: float = 0.01
 
     def __post_init__(self) -> None:
-        """Add the moi_vecs calc to the parent's __post_init__."""
+        """Add type enforcing and moi_vecs to the parent's __post_init__."""
         super().__post_init__()
+
+        # validate input types
+        assert type(self.masses) is np.ndarray
+
         self.moi_vecs = {
             c: get_inertia_moments(
                 coord,
