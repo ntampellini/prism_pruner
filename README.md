@@ -7,9 +7,9 @@
 [![Codecov](https://img.shields.io/codecov/c/github/ntampellini/prism_pruner)](https://codecov.io/gh/ntampellini/prism_pruner)
 [![PyPI - Version](https://img.shields.io/pypi/v/prism_pruner)](https://pypi.org/project/prism-pruner/)
 
-PRISM (PRuning Interface for Similar Molecules) is the modular similarity pruning code originally from [FIRECODE](https://github.com/ntampellini/FIRECODE/tree/main), in a polished standalone package. It filters out duplicate structures from conformational ensembles, leaving behind non-redundant states.
+PRISM (Pruning Interface for Similar Molecules) is the modular similarity pruning code originally from [FIRECODE](https://github.com/ntampellini/FIRECODE/tree/main), in a polished standalone package. It filters out duplicate structures from conformational ensembles, leaving behind non-redundant states.
 
-The code implements a cached, iterative, divide-and conquer approach on increasingly large subsets of the ensemble and removes duplicates as assessed by one of three metrics:
+The code implements a cached, iterative, divide-and-conquer approach on increasingly large subsets of the ensemble and removes duplicates as assessed by one of three metrics:
 - Relative deviation of the moments of inertia on the principal axes
 - Heavy-atom RMSD and maximum deviation
 - Rotamer-corrected heavy-atom RMSD and maximum deviation

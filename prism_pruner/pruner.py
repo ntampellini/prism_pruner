@@ -1,4 +1,4 @@
-"""PRISM - PRuning Interface for Similar Molecules."""
+"""PRISM - Pruning Interface for Similar Molecules."""
 
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -206,7 +206,7 @@ def _main_compute_subrow(
     Ignores structures that are False (0) in in_mask and does not perform
     the comparison if the energy difference between the structures is less
     than self.max_dE. Saves dissimilar structural pairs (i.e. that evaluate to
-    False (0)) by adding them to self.cache, avoiding redundant calcaulations.
+    False (0)) by adding them to self.cache, avoiding redundant calculations.
     """
     i1 = first_abs_index
 
