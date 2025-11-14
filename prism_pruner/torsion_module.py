@@ -1,4 +1,4 @@
-"""PRISM - PRuning Interface for Similar Molecules."""
+"""PRISM - Pruning Interface for Similar Molecules."""
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -436,7 +436,7 @@ def rotationally_corrected_rmsd_and_max(
                 best_rmsd = locally_corrected_rmsd
                 torsion_corrections[i] = angle
 
-            # it is faster to undo the rotation rather than working with a copy of coordss
+            # it is faster to undo the rotation rather than working with a copy of coords
             coord = rotate_dihedral(coord, torsion, -angle, indices_to_be_moved=[torsion[3]])
 
         # now rotate that angle to the desired orientation before going to the next angle

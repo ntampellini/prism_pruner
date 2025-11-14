@@ -60,7 +60,7 @@ def get_sp_n(index: int, graph: Graph) -> int | None:
     This is just an assimilation to the carbon geometry in relation to sp^n:
     - sp¹ is linear
     - sp² is planar
-    - sp³ is tetraedral
+    - sp³ is tetrahedral
     This is mainly used to understand if a torsion is to be rotated or not.
     """
     atom = graph.nodes[index]["atoms"]
@@ -139,7 +139,7 @@ def is_phenyl(coords: Array2D_float) -> bool:
 
     Note: quinones evaluate to True
 
-    :params coords: six coordinates of C/N atoms
+    :param coords: six coordinates of C/N atoms
     :return: bool indicating if the six atoms look like part of a phenyl/naphtyl/pyridine
              system, coordinates for the center of that ring
     """
