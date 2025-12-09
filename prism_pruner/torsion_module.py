@@ -137,6 +137,7 @@ def is_linear(torsion: Torsion, coords: Array2D_float, max_dev_deg: float = 5.0)
 def get_angles(torsion: Torsion, graph: Graph) -> tuple[int, ...]:
     """Return the angles associated with the torsion."""
     d = {
+        1: (0,),  # in case some sp carbons make it to here
         2: (0, 180),
         3: (0, 120, 240),
         4: (0, 90, 180, 270),

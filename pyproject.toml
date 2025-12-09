@@ -2,7 +2,7 @@
 name = "prism_pruner"
 description = "Prism Pruner"
 license = "MIT"
-version = "0.0.4"
+version = "0.0.6"
 readme = "README.md"
 keywords = []
 authors = [{name = "Nicolò Tampellini", email = "nicolo.tampellini@yale.edu"}]

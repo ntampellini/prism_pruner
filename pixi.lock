@@ -4237,8 +4237,8 @@ packages:
   timestamp: 1762692428418
 - pypi: ./
   name: prism-pruner
-  version: 0.0.4
-  sha256: 0e756acb84880b350b8281e1c96c14aa477cb47388e425affc13468b315ea1fb
+  version: 0.0.6
+  sha256: 9a243bcc5fbb4ea30b8becc04f53c5c3b72c7cfc3c0e43b045f468ea40574f70
   requires_dist:
   - networkx>=3.0
   - numpy>=2.0
