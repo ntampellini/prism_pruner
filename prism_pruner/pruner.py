@@ -526,6 +526,7 @@ def prune_by_rmsd_rot_corr(
 
     # get all rotable bonds in the molecule, including dummy rotations
     torsions = get_torsions(
+        ref,
         graph,
         hydrogen_bonds=hydrogen_bonds,
         double_bonds=get_double_bonds_indices(ref, atoms),
@@ -549,7 +550,6 @@ def prune_by_rmsd_rot_corr(
         if ("H" not in [atoms[i] for i in t.torsion])
         or (t.torsion[0] in flat_hbs or t.torsion[3] in flat_hbs)
     ]
-
     # get torsions angles
     angles = [get_angles(t, graph) for t in torsions]
 

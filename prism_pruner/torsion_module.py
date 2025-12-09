@@ -108,6 +108,32 @@ def get_n_fold(torsion: Torsion, graph: Graph) -> int:
     return 4  # O-O, S-S, Ar-Ar, Ar-CO, and everything else
 
 
+def is_linear(torsion: Torsion, coords: Array2D_float, max_dev_deg: float = 5.0) -> bool:
+    """
+    Return wether three or more of the four atoms involved in the torsion are in line.
+
+    :type torsion: Torsion
+    :type coords: Array2D_float
+    :type max_dev_deg: float
+    :rtype: bool
+    """
+    p1, p2, p3, p4 = coords[list(torsion.torsion)]
+    v21 = p1 - p2
+    v23 = p3 - p2
+    a1 = vec_angle(v21, v23)
+
+    if abs(180 - a1) < max_dev_deg:
+        return True
+
+    v34 = p4 - p3
+    a2 = vec_angle(v34, -v23)
+
+    if abs(180 - a2) < max_dev_deg:
+        return True
+
+    return False
+
+
 def get_angles(torsion: Torsion, graph: Graph) -> tuple[int, ...]:
     """Return the angles associated with the torsion."""
     d = {
@@ -371,6 +397,7 @@ def _get_quadruplets(graph: Graph) -> Array2D_int:
 
 
 def get_torsions(
+    coords: Array2D_float,
     graph: Graph,
     hydrogen_bonds: list[list[int]],
     double_bonds: list[tuple[int, int]],
@@ -387,10 +414,16 @@ def get_torsions(
             t = Torsion(*path)
             t.mode = mode
 
-            if (not in_cycle(t, graph)) and is_rotable(
-                t, graph, hydrogen_bonds, keepdummy=keepdummy
-            ):
-                torsions.append(t)
+            # not including linear torsions (i.e. where three or more of the four atoms
+            # are in line) will ignore all rotations involving alkynes and adjacent positions.
+            # This will miss some potentially dummy rotations (i.e X-C#C-tBu) at the cost of
+            # avoiding some more complex and potentially brittle way to account for these.
+            # In any case, MOI-based pruning should account for such dummy rotations.
+            if not is_linear(t, coords):
+                # avoid torsions that are part of a cycle
+                if not in_cycle(t, graph):
+                    if is_rotable(t, graph, hydrogen_bonds, keepdummy=keepdummy):
+                        torsions.append(t)
     # Create non-redundant torsion objects
     # Rejects (4,3,2,1) if (1,2,3,4) is present
     # Rejects torsions that do not represent a rotable bond

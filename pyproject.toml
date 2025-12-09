@@ -41,6 +41,7 @@ mypy = ">=1.18.2,<2"
 pre-commit = ">=4.2"
 jupyter = "*"
 line_profiler = ">=5.0.0"
+matplotlib = "*"
 
 [tool.pixi.dependencies]
 pkginfo = ">=1.10"
