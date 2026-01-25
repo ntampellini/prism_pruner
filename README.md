@@ -9,7 +9,7 @@
 
 <p align="center">
 
-  <img src="images/prism_logo.png" alt="PRISM logo" class="center" width="500"/>
+  <img src="examples/prism_logo.png" alt="PRISM logo" class="center" width="500"/>
 
 </p>
 
