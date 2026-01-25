@@ -10,7 +10,6 @@ requires-python = ">=3.12"
 dependencies = [
     "networkx>=3.0",
     "numpy>=2.0",
-    "periodictable",
     "scipy>=1.10",
     "tqdm>=4"
 ]
@@ -102,10 +101,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "networkx.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "periodictable.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

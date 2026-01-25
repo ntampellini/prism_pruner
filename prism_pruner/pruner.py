@@ -6,11 +6,11 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 from networkx import Graph, connected_components
-from periodictable import elements
 from scipy.spatial.distance import cdist
 
 from prism_pruner.algebra import get_inertia_moments
 from prism_pruner.graph_manipulations import graphize
+from prism_pruner.periodic_table import MASSES_TABLE
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
     get_angles,
@@ -647,7 +647,7 @@ def prune_by_moment_of_inertia(
         max_dE=max_dE,
         debugfunction=debugfunction,
         max_dev=max_deviation,
-        masses=np.array([elements.symbol(a).mass for a in atoms]),
+        masses=np.array([MASSES_TABLE[a] for a in atoms]),
     )
 
     return _run(prunerconfig)
