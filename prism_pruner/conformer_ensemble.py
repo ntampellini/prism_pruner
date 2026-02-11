@@ -26,6 +26,9 @@ class ConformerEnsemble:
         energies = []
         with Path(file).open() as f:
             for num in f:
+                if not num.strip():
+                    continue
+
                 if read_energies:
                     energy = next(re.finditer(r"-*\d+\.\d+", next(f))).group()
                     energies.append(float(energy))
