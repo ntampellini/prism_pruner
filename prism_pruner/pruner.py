@@ -495,34 +495,36 @@ def _batch_rmsd_prune(
 
     Computes all N² pairwise Kabsch RMSDs in one shot using the formula:
 
-        RMSD²(i, j) = ( ‖p_i‖² + ‖q_j‖² − 2·Σσ_k ) / M
+        RMSD²(i, j) = ( ‖p_i‖² + ‖q_j‖² - 2·Σσ_k ) / M
 
-    where p_i and q_j are centered heavy-atom coordinate sets and σ_k are the
+    where p_i and q_j are centered heavy-atom coordinate sets and sigma_k are the
     singular values of p_i.T @ q_j (with Kabsch handedness correction on σ₃).
     """
     start_t = perf_counter()
 
     N = len(structures)
-    heavy_mask: Array1D_bool = atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)
+    heavy_mask: Array1D_bool = (
+        atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)
+    )
     M = int(heavy_mask.sum())
 
     # Center each structure's heavy atoms at the origin
-    heavy = structures[:, heavy_mask, :]                        # (N, M, 3)
-    centered = heavy - heavy.mean(axis=1, keepdims=True)        # (N, M, 3)
+    heavy = structures[:, heavy_mask, :]  # (N, M, 3)
+    centered = heavy - heavy.mean(axis=1, keepdims=True)  # (N, M, 3)
 
-    # All N² pairwise 3×3 covariance matrices: cov[i,j] = centered[i].T @ centered[j]
-    cov = np.einsum("ima,jmb->ijab", centered, centered)        # (N, N, 3, 3)
+    # All N² pairwise 3*3 covariance matrices: cov[i,j] = centered[i].T @ centered[j]
+    cov = np.einsum("ima,jmb->ijab", centered, centered)  # (N, N, 3, 3)
 
     # Batch SVD — singular values only
-    S = np.linalg.svd(cov, compute_uv=False)                   # (N, N, 3)
-    det_sign = np.sign(np.linalg.det(cov))                     # (N, N)
+    S = np.linalg.svd(cov, compute_uv=False)  # (N, N, 3)
+    det_sign = np.sign(np.linalg.det(cov))  # (N, N)
     adjusted_sum_S = S[..., 0] + S[..., 1] + det_sign * S[..., 2]  # (N, N)
 
     # RMSD² for all pairs
-    norm_sq = np.sum(centered ** 2, axis=(-2, -1))              # (N,)
+    norm_sq = np.sum(centered**2, axis=(-2, -1))  # (N,)
     rmsd_sq = (norm_sq[:, None] + norm_sq[None, :] - 2.0 * adjusted_sum_S) / M
     rmsd_sq = np.maximum(rmsd_sq, 0.0)
-    rmsd_all = np.sqrt(rmsd_sq)                                 # (N, N)
+    rmsd_all = np.sqrt(rmsd_sq)  # (N, N)
 
     # Energy filter
     energy_diff = np.abs(energies[:, None] - energies[None, :])
@@ -531,7 +533,7 @@ def _batch_rmsd_prune(
     # max_dev verification for candidate pairs (upper triangle only)
     similar = np.zeros((N, N), dtype=bool)
     i_cands, j_cands = np.where(np.triu(rmsd_all < max_rmsd, k=1))
-    for i, j in zip(i_cands.tolist(), j_cands.tolist()):
+    for i, j in zip(i_cands.tolist(), j_cands.tolist(), strict=True):
         _, max_dev_val = rmsd_and_max(centered[i], centered[j], center=False)
         if max_dev_val < max_dev:
             similar[i, j] = True
@@ -553,7 +555,7 @@ def _batch_rmsd_prune(
     return structures[keep], keep
 
 
-# Threshold: use batch approach when total work C×N² ≤ this many pair-combo evaluations.
+# Threshold: use batch approach when total work C*N² ≤ this many pair-combo evaluations.
 # Above this, fall back to the sequential cache-based approach.
 _BATCH_THRESHOLD = 10_000_000
 
@@ -577,7 +579,7 @@ def _batch_rot_corr_prune(
     structures, then computes every pairwise rotationally-corrected RMSD in one
     batched SVD call.  The RMSD is derived analytically from singular values:
 
-        RMSD²(i, c, j) = ( ‖p_i‖² + ‖q_{c,j}‖² − 2·Σσ_k ) / M
+        RMSD²(i, c, j) = ( ‖p_i‖² + ‖q_{c,j}‖² - 2·Σσ_k ) / M
 
     where p_i = centered ref structure i, q_{c,j} = centered corrected structure j
     under combo c, and the sign of σ₃ is flipped when det(cov) < 0 (Kabsch
@@ -601,37 +603,37 @@ def _batch_rot_corr_prune(
         for k, angle in enumerate(combo):
             if angle != 0:
                 for i in range(N):
-                    rotate_dihedral(corrected_all[c, i], torsions_ids[k], angle, mask=rotation_masks[k])
+                    rotate_dihedral(
+                        corrected_all[c, i], torsions_ids[k], angle, mask=rotation_masks[k]
+                    )
 
     # --- Step 2: center all heavy-atom coordinate sets at the origin ---
-    ref_heavy = temp_structures[:, heavy_mask, :]           # (N, M, 3)
+    ref_heavy = temp_structures[:, heavy_mask, :]  # (N, M, 3)
     centered_ref = ref_heavy - ref_heavy.mean(axis=1, keepdims=True)
 
-    corr_heavy = corrected_all[:, :, heavy_mask, :]         # (C, N, M, 3)
+    corr_heavy = corrected_all[:, :, heavy_mask, :]  # (C, N, M, 3)
     centered_corr = corr_heavy - corr_heavy.mean(axis=2, keepdims=True)
 
-    # --- Step 3: batch all N×C×N pairwise 3×3 covariance matrices ---
+    # --- Step 3: batch all N*C*N pairwise 3*3 covariance matrices ---
     # cov[i,c,j,a,b] = Σ_m centered_ref[i,m,a] · centered_corr[c,j,m,b]
     #                 = centered_ref[i].T @ centered_corr[c,j]
     cov = np.einsum("ima,cjmb->icjab", centered_ref, centered_corr)  # (N, C, N, 3, 3)
 
     # --- Step 4: batch SVD (singular values only) + Kabsch handedness correction ---
-    S = np.linalg.svd(cov, compute_uv=False)          # (N, C, N, 3)
-    det_sign = np.sign(np.linalg.det(cov))            # (N, C, N)
+    S = np.linalg.svd(cov, compute_uv=False)  # (N, C, N, 3)
+    det_sign = np.sign(np.linalg.det(cov))  # (N, C, N)
     adjusted_sum_S = S[..., 0] + S[..., 1] + det_sign * S[..., 2]  # (N, C, N)
 
     # --- Step 5: RMSD² for every (ref i, combo c, target j) ---
-    norm_ref_sq  = np.sum(centered_ref  ** 2, axis=(-2, -1))  # (N,)
-    norm_corr_sq = np.sum(centered_corr ** 2, axis=(-2, -1))  # (C, N)
+    norm_ref_sq = np.sum(centered_ref**2, axis=(-2, -1))  # (N,)
+    norm_corr_sq = np.sum(centered_corr**2, axis=(-2, -1))  # (C, N)
     rmsd_sq = (
-        norm_ref_sq[:, None, None]
-        + norm_corr_sq[None, :, :]
-        - 2.0 * adjusted_sum_S
+        norm_ref_sq[:, None, None] + norm_corr_sq[None, :, :] - 2.0 * adjusted_sum_S
     ) / M  # (N, C, N)
     rmsd_sq = np.maximum(rmsd_sq, 0.0)
 
     # --- Step 6: best rotationally-corrected RMSD per pair ---
-    best_c   = rmsd_sq.argmin(axis=1)        # (N, N)
+    best_c = rmsd_sq.argmin(axis=1)  # (N, N)
     rmsd_min = np.sqrt(rmsd_sq.min(axis=1))  # (N, N)
 
     # Energy filter: exclude pairs outside the energy window
@@ -642,7 +644,7 @@ def _batch_rot_corr_prune(
     # Only the upper triangle matters (j gets removed only if similar to an earlier i).
     similar = np.zeros((N, N), dtype=bool)
     i_cands, j_cands = np.where(np.triu(rmsd_min < max_rmsd, k=1))
-    for i, j in zip(i_cands.tolist(), j_cands.tolist()):
+    for i, j in zip(i_cands.tolist(), j_cands.tolist(), strict=True):
         c_star = int(best_c[i, j])
         _, max_dev_val = rmsd_and_max(centered_ref[i], centered_corr[c_star, j], center=False)
         if max_dev_val < max_dev:
@@ -806,7 +808,7 @@ def prune_by_rmsd_rot_corr(
     C = math.prod(len(a) for a in angles)
 
     if C * N * N <= _BATCH_THRESHOLD:
-        # Batch path: enumerate all C correction combinations, compute all N×C×N
+        # Batch path: enumerate all C correction combinations, compute all N*C*N
         # pairwise RMSDs at once via numpy batched SVD.  Much faster for small-to-
         # medium ensembles because it replaces thousands of Python function calls
         # with a handful of vectorised numpy operations.

@@ -1,3 +1,5 @@
+"""Simple timing script."""
+
 import time
 
 from prism_pruner.conformer_ensemble import ConformerEnsemble

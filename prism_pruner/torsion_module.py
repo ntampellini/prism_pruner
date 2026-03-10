@@ -482,7 +482,11 @@ def rotationally_corrected_rmsd_and_max(
 
         # now rotate that angle to the desired orientation before going to the next angle
         if torsion_corrections[i] != 0:
-            rot_mask = rotation_masks[i] if rotation_masks is not None else _get_rotation_mask(graph, torsion)
+            rot_mask = (
+                rotation_masks[i]
+                if rotation_masks is not None
+                else _get_rotation_mask(graph, torsion)
+            )
             coord = rotate_dihedral(coord, torsion, torsion_corrections[i], mask=rot_mask)
 
         if debugfunction is not None:
