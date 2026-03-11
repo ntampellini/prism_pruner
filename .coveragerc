@@ -1,6 +1,12 @@
 [run]
 source = prism_pruner
-omit = prism_pruner/__main__.py
+omit =
+    prism_pruner/__main__.py
+    */.pixi/*
+    */tests/*
+    # */venv/*
+    # setup.py
+    # */__pycache__/*
 
 [report]
 exclude_lines =

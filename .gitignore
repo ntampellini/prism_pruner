@@ -177,3 +177,6 @@ pyrightconfig.json
 
 # Pixi
 .pixi
+
+#VSCode
+.vscode/
