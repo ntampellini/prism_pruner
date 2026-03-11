@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 from networkx import (
@@ -436,8 +436,8 @@ def rotationally_corrected_rmsd_and_max(
     graph: Graph,
     angles: Sequence[Sequence[int]],
     heavy_atoms_only: bool = True,
-    single_atom_masks: list | None = None,
-    rotation_masks: list | None = None,
+    single_atom_masks: list[Array1D_bool] | None = None,
+    rotation_masks: list[Array1D_bool] | None = None,
     debugfunction: Callable[..., object] | None = None,
     return_type: str = "rmsd",
 ) -> tuple[float, float] | Array2D_float:
@@ -461,7 +461,7 @@ def rotationally_corrected_rmsd_and_max(
     for i, torsion in enumerate(torsions):
         best_rmsd = 1e10
         # Use pre-computed single-atom mask if available, otherwise fall back to indices_to_be_moved
-        scan_kwargs = (
+        scan_kwargs: dict[str, Any] = (
             {"mask": single_atom_masks[i]}
             if single_atom_masks is not None
             else {"indices_to_be_moved": [torsion[3]]}

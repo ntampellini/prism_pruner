@@ -91,8 +91,8 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
     torsions: Array2D_int = field(kw_only=True)
     graph: Graph = field(kw_only=True)
     heavy_atoms_only: bool = True
-    single_atom_masks: list = field(kw_only=True, default_factory=list)
-    rotation_masks: list = field(kw_only=True, default_factory=list)
+    single_atom_masks: list[Array1D_bool] = field(kw_only=True, default_factory=list)
+    rotation_masks: list[Array1D_bool] = field(kw_only=True, default_factory=list)
 
     def __post_init__(self) -> None:
         """Add type enforcing to the parent's __post_init__."""
@@ -541,7 +541,7 @@ def _batch_rmsd_prune(
     # Greedy sequential pruning
     keep = np.ones(N, dtype=bool)
     for j in range(1, N):
-        if keep[j] and np.any(similar[:j, j] & keep[:j]):
+        if np.any(similar[:j, j] & keep[:j]):
             keep[j] = False
 
     if debugfunction is not None:
@@ -565,7 +565,7 @@ def _batch_rot_corr_prune(
     atoms: Array1D_str,
     torsions_ids: Array2D_int,
     angles: Sequence[Sequence[int]],
-    rotation_masks: list,
+    rotation_masks: list[Array1D_bool],
     max_rmsd: float,
     max_dev: float,
     energies: Array1D_float,
@@ -599,9 +599,9 @@ def _batch_rot_corr_prune(
 
     corrected_all = np.empty((C, N, natoms, 3))
     for c, combo in enumerate(combos):
-        corrected_all[c] = temp_structures.copy()
+        corrected_all[c] = temp_structures
         for k, angle in enumerate(combo):
-            if angle != 0:
+            if abs(angle) > 1e-3:
                 for i in range(N):
                     rotate_dihedral(
                         corrected_all[c, i], torsions_ids[k], angle, mask=rotation_masks[k]
@@ -653,7 +653,7 @@ def _batch_rot_corr_prune(
     # --- Step 8: greedy sequential pruning ---
     keep = np.ones(N, dtype=bool)
     for j in range(1, N):
-        if keep[j] and np.any(similar[:j, j] & keep[:j]):
+        if np.any(similar[:j, j] & keep[:j]):
             keep[j] = False
 
     if debugfunction is not None:
