@@ -121,6 +121,7 @@ def test_chained_pruning_1() -> None:
     pruned, mask = prune(
         ensemble.coords[0:n],
         ensemble.atoms,
+        debugfunction=lambda x: None,
     )
 
     np.testing.assert_array_equal(ensemble.coords[0:n][mask], pruned)

@@ -1,5 +1,7 @@
 """PRISM - Pruning Interface for Similar Molecules."""
 
+import itertools
+import math
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, Callable, Sequence
@@ -13,6 +15,7 @@ from prism_pruner.graph_manipulations import graphize
 from prism_pruner.periodic_table import MASSES_TABLE
 from prism_pruner.rmsd import rmsd_and_max
 from prism_pruner.torsion_module import (
+    _get_rotation_mask,
     get_angles,
     get_hydrogen_bonds,
     get_torsions,
@@ -28,7 +31,7 @@ from prism_pruner.typing import (
     Array2D_int,
     Array3D_float,
 )
-from prism_pruner.utils import flatten, get_double_bonds_indices, time_to_string
+from prism_pruner.utils import flatten, get_double_bonds_indices, rotate_dihedral, time_to_string
 
 
 @dataclass
@@ -88,6 +91,8 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
     torsions: Array2D_int = field(kw_only=True)
     graph: Graph = field(kw_only=True)
     heavy_atoms_only: bool = True
+    single_atom_masks: list[Array1D_bool] = field(kw_only=True, default_factory=list)
+    rotation_masks: list[Array1D_bool] = field(kw_only=True, default_factory=list)
 
     def __post_init__(self) -> None:
         """Add type enforcing to the parent's __post_init__."""
@@ -108,6 +113,8 @@ class RMSDRotCorrPrunerConfig(PrunerConfig):
             angles=self.angles,
             # debugfunction=self.debugfunction, # lots of printout
             heavy_atoms_only=self.heavy_atoms_only,
+            single_atom_masks=self.single_atom_masks or None,
+            rotation_masks=self.rotation_masks or None,
         )
 
         if rmsd > self.max_rmsd:
@@ -135,16 +142,17 @@ class RMSDPrunerConfig(PrunerConfig):
         # validate input types
         assert type(self.atoms) is np.ndarray
 
+        # pre-compute heavy atom mask once
+        if self.heavy_atoms_only:
+            self._heavy_mask: Array1D_bool = self.atoms != "H"
+        else:
+            self._heavy_mask = np.ones(self.atoms.shape[0], dtype=np.bool_)
+
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
-        if self.heavy_atoms_only:
-            mask = self.atoms != "H"
-        else:
-            mask = np.ones(self.structures[0].shape[0], dtype=bool)
-
         rmsd, max_dev = rmsd_and_max(
-            self.structures[i1][mask],
-            self.structures[i2][mask],
+            self.structures[i1][self._heavy_mask],
+            self.structures[i2][self._heavy_mask],
             center=True,
         )
 
@@ -440,12 +448,26 @@ def prune_by_rmsd(
     maximum deviation < max_dev. max_dev by default is 2 * max_rmsd.
     """
     if energies is None:
-        energies = np.array([])
+        energies = np.zeros(len(structures))
+        max_dE = 1.0
 
     # set default max_dev if not provided
     max_dev = max_dev or 2 * max_rmsd
 
-    # set up PrunerConfig dataclass
+    N = len(structures)
+    if N * N <= _BATCH_THRESHOLD:
+        return _batch_rmsd_prune(
+            structures=structures,
+            atoms=atoms,
+            max_rmsd=max_rmsd,
+            max_dev=max_dev,
+            energies=energies,
+            max_dE=max_dE,
+            heavy_atoms_only=heavy_atoms_only,
+            debugfunction=debugfunction,
+        )
+
+    # Sequential fallback for large ensembles.
     prunerconfig = RMSDPrunerConfig(
         structures=structures,
         atoms=atoms,
@@ -456,9 +478,193 @@ def prune_by_rmsd(
         debugfunction=debugfunction,
         heavy_atoms_only=heavy_atoms_only,
     )
-
-    # run the pruning
     return _run(prunerconfig)
+
+
+def _batch_rmsd_prune(
+    structures: Array3D_float,
+    atoms: Array1D_str,
+    max_rmsd: float,
+    max_dev: float,
+    energies: Array1D_float,
+    max_dE: float,
+    heavy_atoms_only: bool,
+    debugfunction: Callable[[str], None] | None,
+) -> tuple[Array3D_float, Array1D_bool]:
+    """Batch vectorized RMSD pruning using numpy's batched SVD.
+
+    Computes all N² pairwise Kabsch RMSDs in one shot using the formula:
+
+        RMSD²(i, j) = ( ‖p_i‖² + ‖q_j‖² - 2·Σσ_k ) / M
+
+    where p_i and q_j are centered heavy-atom coordinate sets and sigma_k are the
+    singular values of p_i.T @ q_j (with Kabsch handedness correction on σ₃).
+    """
+    start_t = perf_counter()
+
+    N = len(structures)
+    heavy_mask: Array1D_bool = (
+        atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)
+    )
+    M = int(heavy_mask.sum())
+
+    # Center each structure's heavy atoms at the origin
+    heavy = structures[:, heavy_mask, :]  # (N, M, 3)
+    centered = heavy - heavy.mean(axis=1, keepdims=True)  # (N, M, 3)
+
+    # All N² pairwise 3*3 covariance matrices: cov[i,j] = centered[i].T @ centered[j]
+    cov = np.einsum("ima,jmb->ijab", centered, centered)  # (N, N, 3, 3)
+
+    # Batch SVD — singular values only
+    S = np.linalg.svd(cov, compute_uv=False)  # (N, N, 3)
+    det_sign = np.sign(np.linalg.det(cov))  # (N, N)
+    adjusted_sum_S = S[..., 0] + S[..., 1] + det_sign * S[..., 2]  # (N, N)
+
+    # RMSD² for all pairs
+    norm_sq = np.sum(centered**2, axis=(-2, -1))  # (N,)
+    rmsd_sq = (norm_sq[:, None] + norm_sq[None, :] - 2.0 * adjusted_sum_S) / M
+    rmsd_sq = np.maximum(rmsd_sq, 0.0)
+    rmsd_all = np.sqrt(rmsd_sq)  # (N, N)
+
+    # Energy filter
+    energy_diff = np.abs(energies[:, None] - energies[None, :])
+    rmsd_all[energy_diff >= max_dE] = np.inf
+
+    # max_dev verification for candidate pairs (upper triangle only)
+    similar = np.zeros((N, N), dtype=bool)
+    i_cands, j_cands = np.where(np.triu(rmsd_all < max_rmsd, k=1))
+    for i, j in zip(i_cands.tolist(), j_cands.tolist(), strict=True):
+        _, max_dev_val = rmsd_and_max(centered[i], centered[j], center=False)
+        if max_dev_val < max_dev:
+            similar[i, j] = True
+
+    # Greedy sequential pruning
+    keep = np.ones(N, dtype=bool)
+    for j in range(1, N):
+        if np.any(similar[:j, j] & keep[:j]):
+            keep[j] = False
+
+    if debugfunction is not None:
+        elapsed = perf_counter() - start_t
+        n_kept = int(keep.sum())
+        debugfunction(
+            f"DEBUG: RMSDPrunerConfig - rejected {N - n_kept} "
+            f"(keeping {n_kept}/{N}), in {time_to_string(elapsed)}"
+        )
+
+    return structures[keep], keep
+
+
+# Threshold: use batch approach when total work C*N² ≤ this many pair-combo evaluations.
+# Above this, fall back to the sequential cache-based approach.
+_BATCH_THRESHOLD = 10_000_000
+
+
+def _batch_rot_corr_prune(
+    temp_structures: Array3D_float,
+    atoms: Array1D_str,
+    torsions_ids: Array2D_int,
+    angles: Sequence[Sequence[int]],
+    rotation_masks: list[Array1D_bool],
+    max_rmsd: float,
+    max_dev: float,
+    energies: Array1D_float,
+    max_dE: float,
+    heavy_atoms_only: bool,
+    debugfunction: Callable[[str], None] | None,
+) -> Array1D_bool:
+    """Batch vectorized rot-corr RMSD pruning using numpy's batched SVD.
+
+    Enumerates all C torsion-correction combinations upfront, applies them to all N
+    structures, then computes every pairwise rotationally-corrected RMSD in one
+    batched SVD call.  The RMSD is derived analytically from singular values:
+
+        RMSD²(i, c, j) = ( ‖p_i‖² + ‖q_{c,j}‖² - 2·Σσ_k ) / M
+
+    where p_i = centered ref structure i, q_{c,j} = centered corrected structure j
+    under combo c, and the sign of σ₃ is flipped when det(cov) < 0 (Kabsch
+    handedness correction).  The minimum RMSD over all combos is the
+    rotationally-corrected RMSD for that pair.
+    """
+    start_t = perf_counter()
+
+    N = len(temp_structures)
+    natoms = temp_structures.shape[1]
+    heavy_mask: Array1D_bool = atoms != "H" if heavy_atoms_only else np.ones(natoms, dtype=bool)
+    M = int(heavy_mask.sum())
+
+    # --- Step 1: generate all C correction combinations and apply to all structures ---
+    combos = list(itertools.product(*angles))
+    C = len(combos)
+
+    corrected_all = np.empty((C, N, natoms, 3))
+    for c, combo in enumerate(combos):
+        corrected_all[c] = temp_structures
+        for k, angle in enumerate(combo):
+            if abs(angle) > 1e-3:
+                for i in range(N):
+                    rotate_dihedral(
+                        corrected_all[c, i], torsions_ids[k], angle, mask=rotation_masks[k]
+                    )
+
+    # --- Step 2: center all heavy-atom coordinate sets at the origin ---
+    ref_heavy = temp_structures[:, heavy_mask, :]  # (N, M, 3)
+    centered_ref = ref_heavy - ref_heavy.mean(axis=1, keepdims=True)
+
+    corr_heavy = corrected_all[:, :, heavy_mask, :]  # (C, N, M, 3)
+    centered_corr = corr_heavy - corr_heavy.mean(axis=2, keepdims=True)
+
+    # --- Step 3: batch all N*C*N pairwise 3*3 covariance matrices ---
+    # cov[i,c,j,a,b] = Σ_m centered_ref[i,m,a] · centered_corr[c,j,m,b]
+    #                 = centered_ref[i].T @ centered_corr[c,j]
+    cov = np.einsum("ima,cjmb->icjab", centered_ref, centered_corr)  # (N, C, N, 3, 3)
+
+    # --- Step 4: batch SVD (singular values only) + Kabsch handedness correction ---
+    S = np.linalg.svd(cov, compute_uv=False)  # (N, C, N, 3)
+    det_sign = np.sign(np.linalg.det(cov))  # (N, C, N)
+    adjusted_sum_S = S[..., 0] + S[..., 1] + det_sign * S[..., 2]  # (N, C, N)
+
+    # --- Step 5: RMSD² for every (ref i, combo c, target j) ---
+    norm_ref_sq = np.sum(centered_ref**2, axis=(-2, -1))  # (N,)
+    norm_corr_sq = np.sum(centered_corr**2, axis=(-2, -1))  # (C, N)
+    rmsd_sq = (
+        norm_ref_sq[:, None, None] + norm_corr_sq[None, :, :] - 2.0 * adjusted_sum_S
+    ) / M  # (N, C, N)
+    rmsd_sq = np.maximum(rmsd_sq, 0.0)
+
+    # --- Step 6: best rotationally-corrected RMSD per pair ---
+    best_c = rmsd_sq.argmin(axis=1)  # (N, N)
+    rmsd_min = np.sqrt(rmsd_sq.min(axis=1))  # (N, N)
+
+    # Energy filter: exclude pairs outside the energy window
+    energy_diff = np.abs(energies[:, None] - energies[None, :])  # (N, N)
+    rmsd_min[energy_diff >= max_dE] = np.inf
+
+    # --- Step 7: max_dev verification for candidate similar pairs ---
+    # Only the upper triangle matters (j gets removed only if similar to an earlier i).
+    similar = np.zeros((N, N), dtype=bool)
+    i_cands, j_cands = np.where(np.triu(rmsd_min < max_rmsd, k=1))
+    for i, j in zip(i_cands.tolist(), j_cands.tolist(), strict=True):
+        c_star = int(best_c[i, j])
+        _, max_dev_val = rmsd_and_max(centered_ref[i], centered_corr[c_star, j], center=False)
+        if max_dev_val < max_dev:
+            similar[i, j] = True
+
+    # --- Step 8: greedy sequential pruning ---
+    keep = np.ones(N, dtype=bool)
+    for j in range(1, N):
+        if np.any(similar[:j, j] & keep[:j]):
+            keep[j] = False
+
+    if debugfunction is not None:
+        elapsed = perf_counter() - start_t
+        n_kept = int(keep.sum())
+        debugfunction(
+            f"DEBUG: RMSDRotCorrPrunerConfig - rejected {N - n_kept} "
+            f"(keeping {n_kept}/{N}), in {time_to_string(elapsed)}"
+        )
+
+    return keep
 
 
 def prune_by_rmsd_rot_corr(
@@ -595,23 +801,55 @@ def prune_by_rmsd_rot_corr(
     if energies is None:
         energies = np.array([])
 
-    # Initialize PrunerConfig
-    prunerconfig = RMSDRotCorrPrunerConfig(
-        structures=temp_structures,
-        atoms=atoms,
-        energies=energies,
-        max_dE=max_dE,
-        graph=graph,
-        torsions=torsions_ids,
-        debugfunction=debugfunction,
-        heavy_atoms_only=heavy_atoms_only,
-        angles=angles,
-        max_rmsd=max_rmsd,
-        max_dev=max_dev,
-    )
+    # Pre-compute rotation masks (used by both batch and sequential paths).
+    rotation_masks = [_get_rotation_mask(graph, tuple(t)) for t in torsions_ids]
 
-    # run pruning
-    _temp_structures_out, mask = _run(prunerconfig)
+    N = len(temp_structures)
+    C = math.prod(len(a) for a in angles)
+
+    if C * N * N <= _BATCH_THRESHOLD:
+        # Batch path: enumerate all C correction combinations, compute all N*C*N
+        # pairwise RMSDs at once via numpy batched SVD.  Much faster for small-to-
+        # medium ensembles because it replaces thousands of Python function calls
+        # with a handful of vectorised numpy operations.
+        mask = _batch_rot_corr_prune(
+            temp_structures=temp_structures,
+            atoms=atoms,
+            torsions_ids=torsions_ids,
+            angles=angles,
+            rotation_masks=rotation_masks,
+            max_rmsd=max_rmsd,
+            max_dev=max_dev,
+            energies=energies,
+            max_dE=max_dE,
+            heavy_atoms_only=heavy_atoms_only,
+            debugfunction=debugfunction,
+        )
+    else:
+        # Sequential fallback for large ensembles or many torsion combinations:
+        # enumerate pairs one at a time with a cache to skip recomputation.
+        single_atom_masks = []
+        for t in torsions_ids:
+            m = np.zeros(len(atoms), dtype=bool)
+            m[t[3]] = True
+            single_atom_masks.append(m)
+
+        prunerconfig = RMSDRotCorrPrunerConfig(
+            structures=temp_structures,
+            atoms=atoms,
+            energies=energies,
+            max_dE=max_dE,
+            graph=graph,
+            torsions=torsions_ids,
+            debugfunction=debugfunction,
+            heavy_atoms_only=heavy_atoms_only,
+            angles=angles,
+            max_rmsd=max_rmsd,
+            max_dev=max_dev,
+            single_atom_masks=single_atom_masks,
+            rotation_masks=rotation_masks,
+        )
+        _, mask = _run(prunerconfig)
 
     # remove the extra bond in the molecular graph
     if len(subgraphs) == 2:

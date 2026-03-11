@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 from networkx import (
@@ -356,17 +356,13 @@ def _get_rotation_mask(graph: Graph, torsion: Iterable[int]) -> Array1D_bool:
     graph.add_edge(i2, i3)
     # restore modified graph
 
-    mask = np.array([i in reachable_indices for i in graph.nodes], dtype=bool)
-    # generate boolean mask
-
-    # if np.count_nonzero(mask) > int(len(mask)/2):
-    #     mask = ~mask
-    # if we want to rotate more than half of the indices,
-    # invert the selection so that we do less math
-
+    # Build mask via numpy indexing (faster than Python list comprehension).
+    # Assumes graph nodes are 0-indexed integers, which is always true for molecular graphs.
+    n = graph.number_of_nodes()
+    mask = np.zeros(n, dtype=bool)
+    mask[list(reachable_indices)] = True
     mask[i3] = False
-    # do not rotate i3: it would not move,
-    # since it lies on the rotation axis
+    # do not rotate i3: it would not move, since it lies on the rotation axis
 
     return mask
 
@@ -440,6 +436,8 @@ def rotationally_corrected_rmsd_and_max(
     graph: Graph,
     angles: Sequence[Sequence[int]],
     heavy_atoms_only: bool = True,
+    single_atom_masks: list[Array1D_bool] | None = None,
+    rotation_masks: list[Array1D_bool] | None = None,
     debugfunction: Callable[..., object] | None = None,
     return_type: str = "rmsd",
 ) -> tuple[float, float] | Array2D_float:
@@ -456,13 +454,22 @@ def rotationally_corrected_rmsd_and_max(
         np.array([a != "H" for a in atoms]) if heavy_atoms_only else np.ones(len(atoms), dtype=bool)
     )
 
+    # Work on a copy so we don't need an undo loop at the end to restore the original.
+    coord = coord.copy()
+
     # Now rotate every dummy torsion by the appropriate increment until we minimize local RMSD
     for i, torsion in enumerate(torsions):
         best_rmsd = 1e10
+        # Use pre-computed single-atom mask if available, otherwise fall back to indices_to_be_moved
+        scan_kwargs: dict[str, Any] = (
+            {"mask": single_atom_masks[i]}
+            if single_atom_masks is not None
+            else {"indices_to_be_moved": [torsion[3]]}
+        )
 
         # Look for the rotational angle set that minimizes the torsion RMSD and save it for later
         for angle in angles[i]:
-            coord = rotate_dihedral(coord, torsion, angle, indices_to_be_moved=[torsion[3]])
+            coord = rotate_dihedral(coord, torsion, angle, **scan_kwargs)
 
             locally_corrected_rmsd, _ = rmsd_and_max(ref[torsion], coord[torsion])
 
@@ -470,14 +477,17 @@ def rotationally_corrected_rmsd_and_max(
                 best_rmsd = locally_corrected_rmsd
                 torsion_corrections[i] = angle
 
-            # it is faster to undo the rotation rather than working with a copy of coords
-            coord = rotate_dihedral(coord, torsion, -angle, indices_to_be_moved=[torsion[3]])
+            # undo this test rotation before trying the next angle
+            coord = rotate_dihedral(coord, torsion, -angle, **scan_kwargs)
 
         # now rotate that angle to the desired orientation before going to the next angle
         if torsion_corrections[i] != 0:
-            coord = rotate_dihedral(
-                coord, torsion, torsion_corrections[i], mask=_get_rotation_mask(graph, torsion)
+            rot_mask = (
+                rotation_masks[i]
+                if rotation_masks is not None
+                else _get_rotation_mask(graph, torsion)
             )
+            coord = rotate_dihedral(coord, torsion, torsion_corrections[i], mask=rot_mask)
 
         if debugfunction is not None:
             global_rmsd = rmsd_and_max(ref[mask], coord[mask])[0]
@@ -486,19 +496,8 @@ def rotationally_corrected_rmsd_and_max(
                 + f"4-atom RMSD: {best_rmsd:.3f} Å, global RMSD: {global_rmsd:.3f} Å"
             )
 
-    # we should have the optimal orientation on all torsions now:
-    # calculate the RMSD
+    # we should have the optimal orientation on all torsions now: calculate the RMSD
     rmsd, maxdev = rmsd_and_max(ref[mask], coord[mask])
-
-    # since we could have segmented graphs, and therefore potentially only rotate
-    # subsets of the graph where the torsion last two indices are,
-    # we have to undo the final rotation too (would not be needed for connected graphs)
-    for torsion, optimal_angle in zip(
-        reversed(torsions), reversed(torsion_corrections), strict=False
-    ):
-        coord = rotate_dihedral(
-            coord, torsion, -optimal_angle, mask=_get_rotation_mask(graph, torsion)
-        )
 
     if return_type == "rmsd":
         return rmsd, maxdev
