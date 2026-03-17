@@ -512,7 +512,10 @@ def _batch_rmsd_prune(
     start_t = perf_counter()
 
     N = len(structures)
+
+    # check how many heavy atoms: if none, use all
     M = int(np.count_nonzero(atoms != "H"))
+
     heavy_mask: Array1D_bool = (
         atoms != "H" if (heavy_atoms_only and M > 0) else np.ones(structures.shape[1], dtype=bool)
     )
