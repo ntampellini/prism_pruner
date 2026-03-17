@@ -187,6 +187,15 @@ class MOIPrunerConfig(PrunerConfig):
             for c, coord in enumerate(self.structures)
         }
 
+        # check the first structure to assess if any
+        # moment is zero and we should therefore not
+        # bother using it to compare structures
+        self.check_I_on_axis: tuple[bool, bool, bool] = (
+            self.moi_vecs[0][0] > 1e-6,
+            self.moi_vecs[0][1] > 1e-6,
+            self.moi_vecs[0][2] > 1e-6,
+        )
+
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
         im_1 = self.moi_vecs[i1]
@@ -195,8 +204,8 @@ class MOIPrunerConfig(PrunerConfig):
         # compare the three MOIs via a Python loop:
         # apparently much faster than numpy array operations
         # for such a small array!
-        for j in range(3):
-            if np.abs(im_1[j] - im_2[j]) / im_1[j] >= self.max_dev:
+        for j, check_axis in enumerate(self.check_I_on_axis):
+            if check_axis and np.abs(im_1[j] - im_2[j]) / im_1[j] >= self.max_dev:
                 return False
         return True
 
@@ -503,8 +512,9 @@ def _batch_rmsd_prune(
     start_t = perf_counter()
 
     N = len(structures)
+    M = int(np.count_nonzero(atoms != "H"))
     heavy_mask: Array1D_bool = (
-        atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)
+        atoms != "H" if (heavy_atoms_only and M > 0) else np.ones(structures.shape[1], dtype=bool)
     )
     M = int(heavy_mask.sum())
 
