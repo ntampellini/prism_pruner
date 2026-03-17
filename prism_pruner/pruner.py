@@ -143,7 +143,7 @@ class RMSDPrunerConfig(PrunerConfig):
         assert type(self.atoms) is np.ndarray
 
         # pre-compute heavy atom mask once
-        if self.heavy_atoms_only:
+        if self.heavy_atoms_only and np.count_nonzero(self.atoms != "H") > 0:
             self._heavy_mask: Array1D_bool = self.atoms != "H"
         else:
             self._heavy_mask = np.ones(self.atoms.shape[0], dtype=np.bool_)
