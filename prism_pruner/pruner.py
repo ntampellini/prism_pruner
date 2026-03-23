@@ -14,6 +14,7 @@ from prism_pruner.algebra import get_inertia_moments
 from prism_pruner.graph_manipulations import graphize
 from prism_pruner.periodic_table import MASSES_TABLE
 from prism_pruner.rmsd import rmsd_and_max
+from prism_pruner.timeout_context import Timeout
 from prism_pruner.torsion_module import (
     _get_rotation_mask,
     get_angles,
@@ -44,6 +45,8 @@ class PrunerConfig:
     energies: Array1D_float = field(default_factory=lambda: np.array([]))
     max_dE: float = field(default=0.0)
     debugfunction: Callable[[str], None] | None = field(default=None)
+    timeout_s: int = field(default=60)
+    logfunction: Callable[[str], None] | None = print
 
     # Computed fields
     eval_calls: int = field(default=0, init=False)
@@ -143,7 +146,7 @@ class RMSDPrunerConfig(PrunerConfig):
         assert type(self.atoms) is np.ndarray
 
         # pre-compute heavy atom mask once
-        if self.heavy_atoms_only and np.count_nonzero(self.atoms != "H") > 0:
+        if self.heavy_atoms_only:
             self._heavy_mask: Array1D_bool = self.atoms != "H"
         else:
             self._heavy_mask = np.ones(self.atoms.shape[0], dtype=np.bool_)
@@ -187,15 +190,6 @@ class MOIPrunerConfig(PrunerConfig):
             for c, coord in enumerate(self.structures)
         }
 
-        # check the first structure to assess if any
-        # moment is zero and we should therefore not
-        # bother using it to compare structures
-        self.check_I_on_axis: tuple[bool, bool, bool] = (
-            self.moi_vecs[0][0] > 1e-6,
-            self.moi_vecs[0][1] > 1e-6,
-            self.moi_vecs[0][2] > 1e-6,
-        )
-
     def evaluate_sim(self, i1: int, i2: int) -> bool:
         """Return whether the structures are similar."""
         im_1 = self.moi_vecs[i1]
@@ -204,8 +198,8 @@ class MOIPrunerConfig(PrunerConfig):
         # compare the three MOIs via a Python loop:
         # apparently much faster than numpy array operations
         # for such a small array!
-        for j, check_axis in enumerate(self.check_I_on_axis):
-            if check_axis and np.abs(im_1[j] - im_2[j]) / im_1[j] >= self.max_dev:
+        for j in range(3):
+            if np.abs(im_1[j] - im_2[j]) / im_1[j] >= self.max_dev:
                 return False
         return True
 
@@ -352,6 +346,7 @@ def _run(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     Sets the self.structures and the corresponding self.mask attributes.
     """
     start_t = perf_counter()
+    timed_out = False
 
     # initialize the output mask
     out_mask = np.ones(shape=prunerconfig.structures.shape[0], dtype=np.bool_)
@@ -388,18 +383,27 @@ def _run(prunerconfig: PrunerConfig) -> tuple[Array2D_float, Array1D_bool]:
     ):
         # choose only k values such that every subgroup
         # has on average at least twenty active structures in it
-        if k == 1 or 20 * k < np.count_nonzero(out_mask):
+        if (k == 1 or (20 * k < np.count_nonzero(out_mask))) and not timed_out:
             before = np.count_nonzero(out_mask)
 
             start_t_k = perf_counter()
 
-            # compute similarities and get back the out_mask
-            # and the pairings to be added to cache
-            out_mask = _main_compute_group(
-                prunerconfig,
-                out_mask,
-                k=k,
-            )
+            try:
+                with Timeout(seconds=int(prunerconfig.timeout_s - (perf_counter() - start_t))):
+                    # compute similarities and get back the out_mask
+                    # and the pairings to be added to cache
+                    out_mask = _main_compute_group(
+                        prunerconfig,
+                        out_mask,
+                        k=k,
+                    )
+            except TimeoutError:
+                timed_out = True
+                if prunerconfig.debugfunction is not None:
+                    prunerconfig.debugfunction(
+                        f"TIMEOUT: {prunerconfig.__class__.__name__} timed out on k={k} "
+                        f"({prunerconfig.timeout_s} s)."
+                    )
 
             after = np.count_nonzero(out_mask)
             newly_discarded = before - after
@@ -444,6 +448,7 @@ def prune_by_rmsd(
     max_dev: float | None = None,
     energies: Array1D_float | None = None,
     max_dE: float = 0.0,
+    timeout_s: int = 60,
     heavy_atoms_only: bool = True,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
@@ -484,6 +489,7 @@ def prune_by_rmsd(
         max_dev=max_dev,
         energies=energies,
         max_dE=max_dE,
+        timeout_s=timeout_s,
         debugfunction=debugfunction,
         heavy_atoms_only=heavy_atoms_only,
     )
@@ -512,12 +518,8 @@ def _batch_rmsd_prune(
     start_t = perf_counter()
 
     N = len(structures)
-
-    # check how many heavy atoms: if none, use all
-    M = int(np.count_nonzero(atoms != "H"))
-
     heavy_mask: Array1D_bool = (
-        atoms != "H" if (heavy_atoms_only and M > 0) else np.ones(structures.shape[1], dtype=bool)
+        atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)
     )
     M = int(heavy_mask.sum())
 
@@ -688,6 +690,7 @@ def prune_by_rmsd_rot_corr(
     max_dev: float | None = None,
     energies: Array1D_float | None = None,
     max_dE: float = 0.0,
+    timeout_s: int = 60,
     heavy_atoms_only: bool = True,
     logfunction: Callable[[str], None] | None = None,
     debugfunction: Callable[[str], None] | None = None,
@@ -861,6 +864,7 @@ def prune_by_rmsd_rot_corr(
             max_dev=max_dev,
             single_atom_masks=single_atom_masks,
             rotation_masks=rotation_masks,
+            timeout_s=timeout_s,
         )
         _, mask = _run(prunerconfig)
 
@@ -879,6 +883,7 @@ def prune_by_moment_of_inertia(
     max_deviation: float = 1e-2,
     energies: Array1D_float | None = None,
     max_dE: float = 0.0,
+    timeout_s: int = 60,
     debugfunction: Callable[[str], None] | None = None,
 ) -> tuple[Array3D_float, Array1D_bool]:
     """Remove duplicate structures using a moments of inertia-based metric.
@@ -896,6 +901,7 @@ def prune_by_moment_of_inertia(
         structures=structures,
         energies=energies,
         max_dE=max_dE,
+        timeout_s=timeout_s,
         debugfunction=debugfunction,
         max_dev=max_deviation,
         masses=np.array([MASSES_TABLE[a] for a in atoms]),
@@ -914,6 +920,7 @@ def prune(
     max_dE: float = 0.0,
     debugfunction: Callable[[str], None] | None = None,
     logfunction: Callable[[str], None] | None = None,
+    timeout_s: int = 60,
 ) -> tuple[Array3D_float, Array1D_bool]:
     """Remove duplicate structures.
 
@@ -922,6 +929,8 @@ def prune(
 
     Will only compare structures less than max_dE apart
     in energy, if energies and max_dE are provided.
+
+    Each pruning step will be timed out after timeout_s seconds.
 
     Note: will use automatic pruning thresholds.
     """
@@ -939,8 +948,10 @@ def prune(
             max_deviation=0.01,
             energies=energies,
             max_dE=max_dE,
+            timeout_s=timeout_s,
             debugfunction=debugfunction,
         )
+
         energies = energies[mask]
         active_indices = active_indices[mask]
 
@@ -956,6 +967,7 @@ def prune(
             max_dev=0.5,
             energies=energies,
             max_dE=max_dE,
+            timeout_s=timeout_s,
             debugfunction=debugfunction,
         )
         energies = energies[mask]
@@ -976,6 +988,7 @@ def prune(
             max_dev=0.5,
             energies=energies,
             max_dE=max_dE,
+            timeout_s=timeout_s,
             debugfunction=debugfunction,
             logfunction=logfunction,
         )
