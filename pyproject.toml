@@ -47,6 +47,9 @@ pkginfo = ">=1.10"
 twine = ">=6.1"
 pre-commit = ">=4.4.0,<5"
 
+[project.scripts]
+prism_pruner = "prism_pruner.__main__:cli_main"
+
 [tool.ruff]
 line-length = 100
 

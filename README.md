@@ -25,12 +25,12 @@ The code implements a cached, iterative, divide-and-conquer approach on increasi
 - Rotamer-corrected heavy-atom RMSD and maximum deviation
 
 ## Installation
-The package is distributed through PyPI.
+The package is distributed through PyPI. Installation through uv is recommended.
 
-    pip install prism_pruner
+    uv pip install prism_pruner
 
 ## Usage
-The main pruning functions are in prism_pruner.pruning, and a wrapper that chains up to all three is also available. The functions return the pruned ensemble structures and the relative boolean mask.
+The main pruning functions are in `prism_pruner.pruning`, and a wrapper that chains up to all three is also available. The functions return the pruned ensemble structures and the relative boolean mask.
 
 ```python
 from prism_pruner.conformer_ensemble import ConformerEnsemble
@@ -59,6 +59,15 @@ mask.shape # (1086,)
 For additional performance, it is also possible to read/provide energies to only evaluate the similarity of structures that are energetically close.
 
 For additional usage, see the [examples folder](https://github.com/ntampellini/prism_pruner/tree/master/examples).
+
+## CLI usage
+
+A simple CLI is also provided:
+
+```
+usage: prism_pruner [-h] [-e] [-t TIMEOUT] inputfile
+```
+Will write the pruned ensemble to `inputfile_pruned.xyz`.
 
 ## Credits
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [jevandezande/pixi-cookiecutter](https://github.com/jevandezande/pixi-cookiecutter) project template.
