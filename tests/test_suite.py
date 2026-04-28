@@ -1,6 +1,7 @@
 """Tests for the prism_pruner package."""
 
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 
@@ -140,3 +141,23 @@ def test_chained_pruning_2() -> None:
     )
 
     np.testing.assert_array_equal(ensemble.coords[0:n][mask], pruned)
+
+
+def test_timeout() -> None:
+    """Test timeout function."""
+    ensemble = ConformerEnsemble.from_xyz(HERE / "ensemble_100.xyz")
+    ensemble.coords = np.concatenate([ensemble.coords] * 100)
+
+    t_start = perf_counter()
+
+    prune(
+        ensemble.coords,
+        ensemble.atoms,
+        moi_pruning=False,
+        rmsd_pruning=False,
+        rot_corr_rmsd_pruning=True,
+        timeout_s=1,
+    )
+
+    elapsed = perf_counter() - t_start
+    assert elapsed < 2
