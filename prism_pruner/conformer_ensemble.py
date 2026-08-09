@@ -50,11 +50,18 @@ class ConformerEnsemble:
     def to_xyz(self, file: Path | str) -> None:
         """Write ensemble to an xyz file."""
 
-        def to_xyz(coords: Array2D_float) -> str:
-            return f"{len(coords)}\n\n" + "\n".join(
+        def to_xyz(coords: Array2D_float, energy: float | None = None) -> str:
+            comment = f"{energy}" if energy is not None else ""
+            return f"{len(coords)}\n{comment}\n" + "\n".join(
                 f"{atom} {x:15.8f} {y:15.8f} {z:15.8f}"
                 for atom, (x, y, z) in zip(self.atoms, coords, strict=True)
             )
 
+        energies = (
+            self.energies
+            if len(self.energies) == len(self.coords)
+            else [None] * len(self.coords)
+        )
+
         with Path(file).open("w") as f:
-            f.write("\n".join(map(to_xyz, self.coords)))
+            f.write("\n".join(map(to_xyz, self.coords, energies)))

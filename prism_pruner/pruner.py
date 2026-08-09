@@ -61,9 +61,9 @@ class PrunerConfig:
         self.mask = np.ones(shape=(self.structures.shape[0],), dtype=np.bool_)
 
         if len(self.energies) != 0:
-            assert self.max_dE > 0.0, (
-                "If you provide energies, please also provide an appropriate energy window max_dE."
-            )
+            assert (
+                self.max_dE > 0.0
+            ), "If you provide energies, please also provide an appropriate energy window max_dE."
 
         # Set defaults for optional parameters
         if len(self.energies) == 0:
