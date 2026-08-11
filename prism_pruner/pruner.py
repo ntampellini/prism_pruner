@@ -61,9 +61,9 @@ class PrunerConfig:
         self.mask = np.ones(shape=(self.structures.shape[0],), dtype=np.bool_)
 
         if len(self.energies) != 0:
-            assert (
-                self.max_dE > 0.0
-            ), "If you provide energies, please also provide an appropriate energy window max_dE."
+            assert self.max_dE > 0.0, (
+                "If you provide energies, please also provide an appropriate energy window max_dE."
+            )
 
         # Set defaults for optional parameters
         if len(self.energies) == 0:
@@ -516,6 +516,12 @@ def _batch_rmsd_prune(
     singular values of p_i.T @ q_j (with Kabsch handedness correction on σ₃).
     """
     start_t = perf_counter()
+
+    # sort by energy before pruning, if energies are provided
+    if np.abs(energies[-1]) > 0:
+        sorting_indices = np.argsort(energies)
+        structures = structures[sorting_indices]
+        energies = energies[sorting_indices]
 
     N = len(structures)
     heavy_mask: Array1D_bool = (

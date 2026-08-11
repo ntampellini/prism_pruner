@@ -3,8 +3,6 @@
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 from prism_pruner.conformer_ensemble import ConformerEnsemble
 from prism_pruner.pruner import prune
 
@@ -42,12 +40,6 @@ def cli_main() -> None:
     # read input file
     ens = ConformerEnsemble.from_xyz(args.inputfile, read_energies=args.energies)
     print(f"--> Read {len(ens.coords)} structures from {args.inputfile}.")
-
-    # sort by energy up front: the pruned output is then energy-ordered and
-    # the mask returned by prune() stays aligned with the input coordinates
-    if args.energies:
-        order = np.argsort(ens.energies)
-        ens.coords, ens.energies = ens.coords[order], ens.energies[order]
 
     # perform pruning
     pruned_coords, mask = prune(

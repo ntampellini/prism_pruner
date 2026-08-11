@@ -58,9 +58,7 @@ class ConformerEnsemble:
             )
 
         energies = (
-            self.energies
-            if len(self.energies) == len(self.coords)
-            else [None] * len(self.coords)
+            self.energies if len(self.energies) == len(self.coords) else [None] * len(self.coords)
         )
 
         with Path(file).open("w") as f:
