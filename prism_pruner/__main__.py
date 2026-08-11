@@ -42,7 +42,7 @@ def cli_main() -> None:
     print(f"--> Read {len(ens.coords)} structures from {args.inputfile}.")
 
     # perform pruning
-    pruned_coords, _ = prune(
+    pruned_coords, mask = prune(
         ens.coords,
         ens.atoms,
         energies=ens.energies if args.energies else None,
@@ -52,8 +52,11 @@ def cli_main() -> None:
         debugfunction=print,
     )
 
-    # update ens coordinates
+    # keep only the conformations that survived pruning,
+    # together with their energies
     ens.coords = pruned_coords
+    if args.energies:
+        ens.energies = ens.energies[mask]
 
     # write new ensemble to file
     outname = f"{Path(args.inputfile).stem}_pruned.xyz"

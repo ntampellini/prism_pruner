@@ -517,6 +517,12 @@ def _batch_rmsd_prune(
     """
     start_t = perf_counter()
 
+    # sort by energy before pruning, if energies are provided
+    if np.abs(energies[-1]) > 0:
+        sorting_indices = np.argsort(energies)
+        structures = structures[sorting_indices]
+        energies = energies[sorting_indices]
+
     N = len(structures)
     heavy_mask: Array1D_bool = (
         atoms != "H" if heavy_atoms_only else np.ones(structures.shape[1], dtype=bool)

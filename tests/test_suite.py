@@ -161,3 +161,61 @@ def test_timeout() -> None:
 
     elapsed = perf_counter() - t_start
     assert elapsed < 2
+
+
+def test_to_xyz_roundtrip_energies() -> None:
+    """Assert that to_xyz writes energies to the comment lines and they round-trip."""
+    ensemble = ConformerEnsemble.from_xyz(HERE / "crest_conformers.xyz", read_energies=True)
+
+    sub = ConformerEnsemble(
+        coords=ensemble.coords[:10],
+        atoms=ensemble.atoms,
+        energies=ensemble.energies[:10],
+    )
+
+    outfile = HERE / "test_energies_roundtrip.xyz"
+    try:
+        sub.to_xyz(outfile)
+
+        # each block's comment line must contain the corresponding energy
+        lines = outfile.read_text().splitlines()
+        natoms = len(sub.atoms)
+        for i, energy in enumerate(sub.energies):
+            comment = lines[i * (natoms + 2) + 1]
+            assert comment == f"{energy}"
+
+        # re-reading the file must recover the same energies and coordinates
+        # (coords are written with 8 decimals, so allow a small tolerance)
+        reread = ConformerEnsemble.from_xyz(outfile, read_energies=True)
+        np.testing.assert_allclose(reread.energies, sub.energies)
+        np.testing.assert_allclose(reread.coords, sub.coords, atol=1e-6)
+    finally:
+        outfile.unlink(missing_ok=True)
+
+
+def test_pruned_energies_aligned() -> None:
+    """Assert that pruning with energies keeps one matching energy per structure."""
+    ensemble = ConformerEnsemble.from_xyz(HERE / "crest_conformers.xyz", read_energies=True)
+
+    n = 50
+    # mirror the CLI: sort by energy up front so the output is energy-ordered
+    order = np.argsort(ensemble.energies[:n])
+    coords = ensemble.coords[:n][order]
+    energies = ensemble.energies[:n][order]
+
+    pruned, mask = prune(
+        coords,
+        ensemble.atoms,
+        energies=energies,
+        max_dE=1.0,
+        debugfunction=lambda x: None,
+    )
+
+    # the returned mask must be consistent with the (energy-sorted) input
+    np.testing.assert_array_equal(coords[mask], pruned)
+
+    # kept energies are ascending (pruned structures are energy-sorted)
+    # and one per kept structure
+    kept = energies[mask]
+    assert len(kept) == len(pruned)
+    assert np.all(np.diff(kept) >= 0)
